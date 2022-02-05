@@ -1,0 +1,11 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/862374/20dc5af148664cd485bff93e6412ee5e
+bundleId: https://api.rpubs.com/api/v1/document/862374/20dc5af148664cd485bff93e6412ee5e
+url: http://rpubs.com/rachelgreenlee/862374
+when: 1644028372.82538
+lastSyncTime: 1644028372.82538

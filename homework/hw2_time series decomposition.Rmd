@@ -1,0 +1,185 @@
+---
+title: "HW1 - Time series decompoistion"
+author: "Rachel Greenlee"
+date: "2/5/2022"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: lumen
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library("fpp3")
+library("plotly")
+```
+
+
+
+**Exercises from Section 3 of Forecasting: Principles & Practice at https://otexts.com/fpp3/decomposition-exercises.html**
+
+
+### Exercise 3.1
+
+#### Consider the GDP information in global_economy. Plot the GDP per capita for each country over time. Which country has the highest GDP per capita? How has this changed over time? 
+
+For the most recent year of 2016 Monaco has the highest GDP per capita with Liechtenstein just behind it. These two have been ahead of the pack since around 1985 when they broke out of the masses, with Monaco usually behind a fair ways above Liechtenstein. 
+
+
+```{r}
+ggplotly(
+  autoplot(global_economy, GDP/Population) +
+    theme(legend.position = "none"))
+```
+
+
+
+
+### Exercise 3.2
+
+
+#### For each of the following series, make a graph of the data. If transforming seems appropriate, do so and describe the effect.
+
+#### United States GDP from global_economy.
+
+```{r}
+
+```
+
+
+#### Slaughter of Victorian “Bulls, bullocks and steers” in aus_livestock.
+
+```{r}
+
+```
+
+
+
+#### Victorian Electricity Demand from vic_elec.
+
+```{r}
+
+```
+
+#### Gas production from aus_production.
+
+```{r}
+
+```
+
+
+### Exercise 3.3
+
+#### Why is a Box-Cox transformation unhelpful for the canadian_gas data?
+
+
+
+
+
+### Exercise 3.4
+
+#### What Box-Cox transformation would you select for your retail data (from Exercise 8 in Section 2.10)?
+
+
+### Exercise 3.5
+
+#### For the following series, find an appropriate Box-Cox transformation in order to stabilise the variance. 
+
+#### Tobacco from aus_production
+
+```{r}
+
+```
+
+
+
+#### Economy class passengers between Melbourne and Sydney from ansett
+
+```{r}
+
+```
+
+
+
+#### Pedestrian counts at Southern Cross Station from pedestrian
+
+```{r}
+
+```
+
+
+
+
+### Exercise 3.7
+
+#### Consider the last five years of the Gas data from aus_production.
+
+```{r}
+gas <- tail(aus_production, 5*4) %>% select(Gas)
+```
+
+#### Plot the time series. Can you identify seasonal fluctuations and/or a trend-cycle?
+
+```{r}
+
+```
+
+
+#### Use classical_decomposition with type=multiplicative to calculate the trend-cycle and seasonal indices.
+
+```{r}
+
+```
+
+
+#### Do the results support the graphical interpretation from part a?
+
+
+#### Compute and plot the seasonally adjusted data.
+
+```{r}
+```
+
+
+
+#### Change one observation to be an outlier (e.g., add 300 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?
+
+```{r}
+
+```
+
+
+
+#### Does it make any difference if the outlier is near the end rather than in the middle of the time series?
+
+
+
+
+
+### Exercise 3.8
+
+#### Recall your retail time series data (from Exercise 8 in Section 2.10). Decompose the series using X-11. Does it reveal any outliers, or unusual features that you had not noticed previously?
+
+```{r}
+
+```
+
+
+
+
+### Exercise 3.9
+
+#### Figures 3.19 and 3.20 show the result of decomposing the number of persons in the civilian labour force in Australia each month from February 1978 to August 1995.
+
+#### Write about 3–5 sentences describing the results of the decomposition. Pay particular attention to the scales of the graphs in making your interpretation.
+
+
+#### Is the recession of 1991/1992 visible in the estimated components?
+
+
+
+
+

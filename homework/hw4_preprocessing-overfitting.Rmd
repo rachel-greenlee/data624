@@ -1,0 +1,214 @@
+---
+title: "HW4 - Preprocessing/Overfitting"
+author: "Rachel Greenlee"
+date: "2/24/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE,
+                      out.width = "100%")
+
+##### must run this if you want to use skimr & dlookr, spent 2 hours trying to troubleshoot buggy behavior
+##### with recent updates
+options(kableExtra.auto_format = FALSE)
+
+library("mlbench") #for datasetes used below
+library("skimr") #for data exploration
+library("tidyverse")
+library("corrplot") #for correlation plot
+library("visdat") #nice grpahic missing data
+library("naniar") #nice grpahic missing data
+library("dlookr") #causes trouble with skimr so you'll see me loading/detaching it later on as needed
+
+
+##making theme
+mpeach <- "#fbaa82"
+mteal <- "#73a2ac"
+mdarkteal <- "#0b5d69"
+mgray <- "#4c4c4c"
+
+# set plot theme for assignment
+my_plot_theme <- list(
+  theme_classic() +
+  theme(plot.background = element_rect(fill = "#F3F2E8"),
+        panel.background = element_rect(fill = "#F3F2E8"),
+        panel.grid.major.x = element_line(color = "white"),
+        axis.title.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        text = element_text(size = 20)))
+```
+
+
+
+**Exercises from Chapter 3 of textbook Applied Predictive Modeling by Kuhn & Johnson**
+
+
+# Exercise 3.1
+
+#### The UC Irvine Machine Learning Repository contains a data set related to glass identification. The data consit of 214 glass samples labeled as one of seven class categories. There are nine predictors, including the refractive index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe. 
+
+I like using the `skimr` package as a first step to explore the data. Below we see that the target variable is factor with 6 levels, and all of the predictor variables are numeric. There are zero missing values across the whole dataset. The means have quite a large range between variables. The mini-histograms show quite a few variables have one dominating value with the rest quite infrequent. We'll need to investigate that more.
+
+
+```{r}
+#load in dataset
+data(Glass)
+skim(Glass)
+```
+
+
+
+#### (a) Using visualizations, explore the predictor variables to understand their distributions as well as their relatoinships between predictors.  
+
+The histograms below show the different scales we are dealing with across the predictor variables. All are showing bins = 0.5. Variables BA, FE, K, and RI have numerically very small ranges of values so they don't look as varied as the other variables. This scale shows Al, Ca, Mg, Na, and Si to have something resembling normal distributions, but with some skew on a few, and a lot of zero values on some. 
+
+```{r, fig.asp= 0.8, fig.width=6}
+Glass %>%
+  subset(select = -Type) %>%
+  #reshape data
+  gather() %>% 
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.5) +
+  facet_wrap(~ key, scales = "free") +
+  labs(title = "Checking Distribution of Glass Predcitor Variables") +
+  my_plot_theme
+```
+
+
+
+
+Looking at the correlation plot below, note that any correlations not significant at a level fo p=0.05 are omitted. We see a few darker squares, the most prominent being the positive (gray) correlation between RI and Ca that is statistically significant. The next largest positive correlation is between Ba and Al, also significant. In the negative direction, the three darkest (teal) correlations, all also significant, are Si and Rl, Al and Mg, and Ba, and Mg.
+```{r, fig.asp= 0.8, fig.width=6}
+#drop target variable (and non-numeric)
+Glass_num <- subset(Glass, select = -Type)
+
+#create correlation matrix
+glass_cor <- cor(Glass_num)
+
+#get p-values
+testRes = cor.mtest(mtcars, conf.level = 0.95)
+
+corrplot(glass_cor, p.mat = testRes$p, method = 'color', diag = FALSE, type = 'lower',
+         sig.level = 0.05, pch.cex = 0.9, insig='blank',
+         addCoef.col = "black", 
+         pch.col = 'grey20', order = 'AOE',
+         number.cex = 1.5, tl.cex = 1.5, cl.cex = 1.5,
+         col=colorRampPalette(c("#0b5d69", "white", "#4c4c4c"))(100))
+
+
+```
+
+
+
+
+#### (b) Do there appear to be any outliers in the data? Are any predictors skewed?
+
+A visual inspection of the boxplots below shows there appear to be many outliers, by the definition of outliers being beyond the IQR. We have skew in Ba, Fe, and K, likely due to the zero values - which we might be able to fix with a log transformation. 
+
+```{r, fig.asp= 0.8, fig.width=6}
+Glass %>%
+  #histograms only for numeric variables
+  subset(select = -Type) %>%
+  #reshape
+  gather() %>% 
+  ggplot(aes(value)) +
+  geom_boxplot() +
+  facet_wrap(~ key, scales = "free") +
+  labs(title = "Checking Distribution of Glass Predcitor Variables") +
+  my_plot_theme
+```
+
+Using the handy `diagnose_outlier()` function from `dlookr` package we see each variable with the count of outliers and the associated ratio, and the mean of the grouped outliers. The final two columns are very valuable, showing us how the inclusion of these outliers affects the overall mean of the variable.  
+
+In our case, we see that Ba has the largest proportion of outliers and it affects the mean a fair amount considering the scale of 0-3.2 we see on the boxplot above. In contrast, while Rl has 17 outliers this appears to be a small enough proportion, and small enough outliers, that the mean isn't affects with or without the outliers included.
+
+```{r}
+outlier <- diagnose_outlier(Glass) %>%
+   arrange(desc(outliers_cnt)) %>%
+   mutate_if(is.numeric, round , digits=3)
+
+knitr::kable(outlier)
+```
+
+
+
+#### (c) Are there any relevant transformation of one or more predictors that might improve the classification model? 
+
+Due to the skewness, based around zero, that was identified above a few variables might benefit from log transformations. Let's check quick. As predicted from looking at the box plots, variables Ba, Fe, and K appear to benefit from a log transformation. Most of the other variables have some flaring at the tails on the QQ-plots but are otherwise reasonable. Mg stands out, likely due to the large number of values of zero - I'd be curious to ask a content-expert on if these are truly zero measurements or are meant to be NAN values. The log transformation might be appropriate depending on that information. It appears the skewness in Al not created by zero values benefits from either a sqrt or log transformation, finding lambda could help make that decision. 
+
+
+```{r}
+Glass %>% plot_normality()
+```
+
+
+
+
+
+# Exercise 3.2
+
+#### The soybean data can also be found at the UC Irvine Machine Learning Repository. Data were collected to predict disease in 683 soybeans. The 35 predictors are mostly categorical and include information on the environmental conditions (e.g., temperature, precipitation) and plant conditions (e.g., left spots, mold growth). The outcome labels consist of 19 distinct classes.  
+
+Again using the `skim` function we see our dataset contains 36 variables of factor type. There are quite a few missing values though each variable as at least 82% of it's data available. 
+
+```{r}
+data(Soybean)
+skim_without_charts(Soybean)
+```
+
+
+#### (a) Investiage the frequency distributions for the categorical predictors. Are any of the distributions degenerate in ways discussed earlier in this chapter?  
+
+Looking at this large output of histograms we get a sense visually of the number of levels for each factor variable and the proportion of NAs.  
+
+A degenerate distribution is when the variable has only a single value present, or if just a few unique values occur very seldom - essentially we are identifying zero or near-zero variance. In our dataset the variables that look problematic are: int.discolor, leaf.malf, leaf.mild, leaves, lodging, mycelium, mold.growth, roots, sclerotia, seed.discolor, seed.size, and shriveling. This is a lot, but many of these only had 2 factors and one dominates the dataset.
+
+
+```{r, fig.height=14}
+Soybean %>%
+  subset(select = -Class) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  geom_histogram(stat = "count") +
+  facet_wrap(~ key, scales = "free", ncol = 3) +
+  labs(title = "Checking Distribution of Soybean Predcitor Variables") +
+  my_plot_theme
+```
+
+
+
+
+
+#### (b) Roughly 18% of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?  
+
+The plot below has been restricted to see the 7 most frequent patterns of missing data. Looking at the plot below from left to right we see the variables with the highest counts of missing data. For example, hail, server, seed.tmt, and lodging are missing in all 121 incomplete cases. There are 34 variables that have some missing values, but these are the highest and most consistent to be missing. Furtherwe see that 55 cases have the first 16 variables (from left to right) missing, that seems to be a strong pattern.
+
+```{r, fig.asp= 0.8, fig.width=5}
+Soybean %>% 
+  plot_na_intersect(only_na = TRUE, typographic = TRUE, n_intersacts = 7)
+
+
+```
+
+
+The graphic below helps look at the patterns of missingness in a slightly different way. For display purposes I've restricted it to show the 7 most frequent patterns. As seen above, 55 cases are missing those 16 variables. After that we see more cases missing different combinations of those same variables. 
+
+
+```{r, fig.asp= 1.0, fig.width=4}
+gg_miss_upset(Soybean, nsets = 16)
+
+```
+
+
+
+#### (c) Develop a strategy for handling missing data, either by eliminating predictors or imputation.
+
+In this case, my strategy would be to drop the variables with degenerate distributions: leaf.mild, mycelium, and sclerotia. After that I would choose to use k-NN methods to impute the missing values. A mean or mode doesn't make sense to me in the case of these variables as so many have only 2 levels to the factor. Choosing k-NN means we can rely on the many cases of complete observations and let the algorithm fill in the most likely data after learning what sort of observations are usually grouped together. (I attempted to find a package to do this for categorical data to give it a test run, but couldn't find one nor could I find an example in our textbook. I hope to learn how to do this soon!)
+
+

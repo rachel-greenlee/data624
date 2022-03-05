@@ -1,0 +1,322 @@
+---
+title: "HW5 - Exponential Smoothing"
+author: "Rachel Greenlee"
+date: "3/4/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE,
+                      out.width = "100%")
+
+library("fpp3")
+library("plotly")
+library("kableExtra")
+
+##making theme
+mpeach <- "#fbaa82"
+mteal <- "#73a2ac"
+mdarkteal <- "#0b5d69"
+mgray <- "#4c4c4c"
+
+# set plot theme for assignment
+my_plot_theme <- list(
+  theme_classic() +
+  theme(plot.background = element_rect(fill = "#F3F2E8"),
+        panel.background = element_rect(fill = "#F3F2E8"),
+        panel.grid.major.x = element_line(color = "white"),
+        axis.title.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        text = element_text(size = 20)))
+```
+
+
+
+**Exercises from Section 5 of Forecasting: Principles & Practice at https://otexts.com/fpp3/expsmooth-exercises.html**
+
+
+# Exercise 8.1
+
+#### Consider the the number of pigs slaughtered in Victoria, available in the aus_livestock dataset.
+
+#### (a) Use the ETS() function to estimate the equivalent model for simple exponential smoothing. Find the optimal values of α and ℓ0, and generate forecasts for the next four months.
+
+First a quick look at the raw data.
+
+```{r}
+pigs_vic <- aus_livestock %>%
+  filter(State == 'Victoria',
+           Animal == 'Pigs')
+
+
+pigs_vic %>%
+  autoplot()
+```
+I build an ANN simple exponential smoothing model below and call report() on it to see selected values. We see an alpha of 0.3221247 was selected and a l_0 (initial states section) of 100,646.6. 
+
+```{r}
+# Estimate parameters
+fit <- pigs_vic %>%
+  model(ETS(Count ~ error("A") + trend("N") + season("N")))
+
+# Output model fit
+report(fit)
+```
+
+Using the above model we forecast 4 values ahead and see the forecast for each month will be 95,186.56.
+
+```{r}
+fc <- fit %>%
+  forecast(h = 4)
+
+fc
+```
+
+
+
+
+#### (b) Compute a 95% prediction interval for the first forecast using y-hat±1.96s where s is the standard deviation of the residuals. Compare your interval with the interval produced by R.
+
+The prediction interval bounds are from 113,502.1 to 78,871.01 when calculated mathematically from the fit values. 
+
+```{r}
+# first predicted value
+pred_1 <- mean(fc$.mean[1])
+
+# get residuals
+aug_fit <- augment(fit)
+
+# calc SD
+sd <- sd(aug_fit$.resid)
+
+# Calculate the 95% prediction intervals
+pred_1 + (sd * 1.96)
+pred_1 - (sd * 1.96)
+
+
+```
+
+The prediction interval using the hilo() function on our predicted values is similar but not exactly the same, ranging from 76,854.79 to 113,518.3.
+
+```{r}
+# use hil() to convert predictions into intervals
+fc_hilo <- fc %>% hilo()
+
+# Output model interval values
+fc_hilo$`95%`[1]
+```
+
+
+```{r}
+
+fc %>%
+  autoplot(pigs_vic) +
+  labs(y="Count", title="Pigs Slaughtered in Victoria, Australia - by month") +
+  guides(colour = "none")
+```
+
+
+
+
+# Exercise 8.5
+
+#### Data set global_economy contains the annual Exports from many countries. Select one country to analyse.
+
+```{r}
+ireland_econ <- global_economy %>%
+  filter(Country == "Ireland")
+
+
+```
+
+
+
+#### (a) Plot the Exports series and discuss the main features of the data.  
+
+Looking at Ireland's economy export data there is an upward trend that has only dipped significantly around the mid 2000s but this was followed by a steep include and recovery that almomst appears to have regained the trend/momentum. 
+
+```{r}
+ireland_econ %>%
+  autoplot(Exports)
+```
+
+
+
+#### (b) Use an ETS(A,N,N) model to forecast the series, and plot the forecasts.  
+
+Below I fit the model, forecast 6 years, and plot these forecasts.
+
+```{r}
+# Estimate parameters
+fit_ann <- ireland_econ %>%
+  model(ETS(Exports ~ error("A") + trend("N") + season("N")))
+
+
+# forecast 6 years
+fc_ann <- fit_ann %>%
+  forecast(h = 6)
+
+fc_ann %>%
+  autoplot(ireland_econ) +
+  labs(y="Exports of good and services (% GDP)", title="Ireland's Exports, ETS(A,N,N)") +
+  guides(colour = "none")
+```
+
+
+
+#### (c) Compute the RMSE values for the training data.  
+
+Using the accuracy() function I see the RMSE of 4.02662.
+
+```{r}
+#show RMSE for model
+accuracy(fit_ann)
+
+```
+
+
+
+#### (d) Compare the results to those from an ETS(A,A,N) model. (Remember that the trended model is using one more parameter than the simpler model.) Discuss the merits of the two forecasting methods for this data set.
+
+For the ETS(A,A,N) model the RMSE if 3.738005. This is quite a bit lower than the RMSE for the ETS(A, N, N) model which means it is the favored model by this measure. 
+
+```{r}
+# Estimate parameters
+fit_aan <- ireland_econ %>%
+  model(ETS(Exports ~ error("A") + trend("A") + season("N")))
+
+
+# forecast 6 years
+fc_aan <- fit_aan %>%
+  forecast(h = 6)
+
+
+accuracy(fit_aan)
+```
+```{r}
+fc_aan %>%
+  autoplot(ireland_econ) +
+  labs(y="Exports of good and services (% GDP)", title="Ireland's Exports, ETS(A, A, N)") +
+  guides(colour = "none")
+
+```
+
+
+
+#### (e) Compare the forecasts from both methods. Which do you think is best?
+
+In reviewing the two visualizations of the predictions above, the ETS(A, A, N) seems to better capture the upward trend of the export data while the ETS(A, N, N) is static and likely underselling our Irish friends. Further, the lower RMSE score of the ETS(A, A, N) is another point in it's favor - so that would be my selection with the data available.
+
+
+
+#### (f) Calculate a 95% prediction interval for the first forecast for each model, using the RMSE values and assuming normal errors. Compare your intervals with those produced using R.  
+
+The ETS(A, N, N) model has a prediction interval from 112.67 - 127.35 (span 14.68) while the ETS(A, A, N) model has a prediction interval from 113.87 - 128.59 (span 14.72). 
+
+```{r}
+### ANN first
+# first predicted value
+pred_1 <- mean(fc_ann$.mean[1])
+
+# get residuals
+aug_fit_ann <- augment(fit_ann)
+
+# calc SD
+sd_ann <- sd(aug_fit_ann$.resid)
+
+# Calculate the 95% prediction intervals
+pred_1 + (sd_ann * 1.96)
+pred_1 - (sd_ann * 1.96)
+
+### AAN second
+# first predicted value
+pred_1 <- mean(fc_aan$.mean[1])
+
+# get residuals
+aug_fit_aan <- augment(fit_aan)
+
+# calc SD
+sd_aan <- sd(aug_fit_aan$.resid)
+
+# Calculate the 95% prediction intervals
+pred_1 + (sd_aan * 1.96)
+pred_1 - (sd_aan * 1.96)
+
+
+
+```
+
+Next using the hilo() function we find the intervals again.
+
+For the ETS(A, N, N) this interval is 111.98 - 128.04 (span 16.06) and for ETS(A, A, N) an interval of 113.64 - 128.82 (span 15.18). This span a bit larger than the intervals calculated above, but are quite similar considering the scale of this dataset.
+
+
+```{r}
+### ANN first
+# use hilo() to convert predictions into intervals
+fc_hilo_ann <- fc_ann %>% hilo()
+
+# Output model interval values
+fc_hilo_ann$`95%`[1]
+
+### AAN second
+# use hilo() to convert predictions into intervals
+fc_hilo_aan <- fc_aan %>% hilo()
+
+# Output model interval values
+fc_hilo_aan$`95%`[1]
+
+
+```
+
+
+
+# Exercise 8.6
+
+#### Forecast the Chinese GDP from the global_economy data set using an ETS model. Experiment with the various options in the ETS() function to see how much the forecasts change with damped trend, or with a Box-Cox transformation. Try to develop an intuition of what each is doing to the forecasts.
+
+*[Hint: use a relatively large value of h when forecasting, so you can clearly see the differences between the various options when plotting the forecasts.]*
+
+
+# Exercise 8.7
+
+#### Find an ETS model for the Gas data from aus_production and forecast the next few years. Why is multiplicative seasonality necessary here? Experiment with making the trend damped. Does it improve the forecasts?
+
+
+# Exercise 8.8
+
+#### Recall your retail time series data (from Exercise 8 in Section 2.10).
+
+#### (a) Why is multiplicative seasonality necessary for this series?
+
+
+#### (b) Apply Holt-Winters’ multiplicative method to the data. Experiment with making the trend damped.
+
+#### (c) Compare the RMSE of the one-step forecasts from the two methods. Which do you prefer?
+
+#### (d) Check that the residuals from the best method look like white noise.
+
+
+#### (e) Now find the test set RMSE, while training the model to the end of 2010. Can you beat the seasonal naïve approach from Exercise 7 in Section 5.11?
+
+
+# Exercise 8.9
+
+#### For the same retail data, try an STL decomposition applied to the Box-Cox transformed series, followed by ETS on the seasonally adjusted data. How does that compare with your best previous forecasts on the test set?
+
+
+
+
+
+
+
+
+
+
+
+

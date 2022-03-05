@@ -282,10 +282,91 @@ fc_hilo_aan$`95%`[1]
 
 *[Hint: use a relatively large value of h when forecasting, so you can clearly see the differences between the various options when plotting the forecasts.]*
 
+First a look at the raw data. There is very steep upward trend started around 2000 with little severe outliers and no seasonality. This means we won't need the Holt-Winters' methods (A, A, and A, M, A_d, M) that would suite data with seasonality. Further we certainly need a model that captures the trend, so simple exponential smoothing (N, N) also isn't best. That leaves us with Holt's linear method (A, N) and add additive damped trend method (A_d, N) as possible options.
+
+```{r}
+china_gdp <- global_economy %>%
+  filter(Country == "China")
+
+china_gdp %>%
+  autoplot(GDP) +
+  labs(title = "China's GDP - by year", y = "GDP")
+
+```
+
+Below I model and plot the Holt linear method and three versions of additive tamped trend methods with varying phi levels. Our textbooks states phi is rarely less than 0.8 as the damping has a very strong effect for smaller values and rarely more than 0.98 as closer to 1 it becomes hard to see the damping at all. 
+
+Looking at the models graphed below, the box-cox transformation has logged the data (lambda -0.034) and then displayed all of the models. The ETS box-cox model is the most optimistic with an expectation of runaway growth even greater than the trend appears after being logged. As expected the Holt Linear forecast continues the trend as is with no change in slope. Next we see the three damping method where the highest values of phi correspond with the slightest damping, such as the green line with phi = 0.95. In this scenario my gut would be to choose the additive damping model with phi = 0.95 because is seems to capture the upward trend but also acknowledged most things cannot continue growing at the same rate forever. That's more of a gut instinct at this point, but knowing more about the Chinese economy would help.
+
+
+```{r}
+
+#determine lambda
+china_gdp_lambda <- china_gdp %>%
+  features(GDP, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+
+#create 4 models to compare
+china_add_damp <-
+    china_gdp %>%
+    model(
+        holt_linear = ETS(GDP ~ error('A') + trend('A') + season('N')),
+        ets_boxcox = ETS(box_cox(GDP, china_gdp_lambda)),
+        add_damp_0.8 = ETS(GDP ~ error('A') + trend('Ad', phi = 0.8) + season('N')),
+        add_damp_0.87 = ETS(GDP ~ error('A') + trend('Ad', phi = 0.87) + season('N')),
+        add_damp_0.95 = ETS(GDP ~ error('A') + trend('Ad', phi = 0.95) + season('N'))
+    )
+
+#forecast and plot all
+china_add_damp %>% 
+    forecast(h = 10) %>% 
+    autoplot(china_gdp, level = NULL)
+```
+
+
 
 # Exercise 8.7
 
-#### Find an ETS model for the Gas data from aus_production and forecast the next few years. Why is multiplicative seasonality necessary here? Experiment with making the trend damped. Does it improve the forecasts?
+#### Find an ETS model for the Gas data from aus_production and forecast the next few years. Why is multiplicative seasonality necessary here? Experiment with making the trend damped. Does it improve the forecasts? 
+
+Taking a look at the raw data below we see what I've come to think of as 'varying variance'. There is clear seasonality here, but the lows and highs of that seasonality is increasing over the course of the time. This is precisely why multiplicative seasonality is necessary, as it will reflect the seasonality as more of a proportion than a constant. 
+
+```{r}
+aus_production %>%
+  autoplot(Gas)
+  
+```
+
+Below I've plotted a standard multiplicative Holt-Winter (A, A, M) forecast and a damped multiplicative Holt-Winter (A, A_d, M, phi = 0.85). 
+
+As expected the standard multiplicative Holt-Winter (A, A, M) forecast continues the seasonality at the degree it has been observed most recently and incorporates the upward trend. The damped version of this is similar but begins to flatten out the upward trend.
+
+```{r}
+#create 2 models to compare
+gas_models <-
+    aus_production %>%
+    model(
+        mult_holtwinter = ETS(Gas ~ error('A') + trend('A') + season('M')),
+        mult_holtwinter_damp_0.85 = ETS(Gas ~ error('A') + trend('Ad', phi = 0.85) + season('M'))
+    )
+
+#forecast 4 years and plot all
+gas_models %>% 
+    forecast(h = 16) %>% 
+    autoplot(aus_production, level = NULL)
+```
+
+
+Checking the RMSE values on the model it appears that the non-damped model performs better according to this measure of accuracy.
+
+```{r}
+
+gas_models %>%
+  accuracy() %>%
+  select(.model, RMSE)
+
+```
 
 
 # Exercise 8.8
@@ -294,23 +375,142 @@ fc_hilo_aan$`95%`[1]
 
 #### (a) Why is multiplicative seasonality necessary for this series?
 
+Look at the plot below we see seasonality that has very small highs and lows early on, but as time continues the highs and lows vary while on the whole increasing in magnitude - this means multiplicative seasonality will be necessary to captures those fluctuations.
+
+```{r}
+set.seed(8675309)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`,1))
+
+myseries %>%
+  autoplot()
+```
+
+
 
 #### (b) Apply Holt-Winters’ multiplicative method to the data. Experiment with making the trend damped.
 
+Below we see both models and as expected, the damped version has the same shape but doesn't follow the trend quite as high.
+
+```{r}
+#create 2 models to compare
+myseries_models <-
+    myseries %>%
+    model(
+        mult_holtwinter = ETS(Turnover ~ error('A') + trend('A') + season('M')),
+        mult_holtwinter_damp_0.85 = ETS(Turnover ~ error('A') + trend('Ad', phi = 0.85) + season('M'))
+    )
+
+#forecast 3 years and plot all
+myseries_models %>% 
+    forecast(h = 36) %>% 
+    autoplot(myseries, level = NULL)
+```
+
+
+
 #### (c) Compare the RMSE of the one-step forecasts from the two methods. Which do you prefer?
+
+The RMSE are close between the two models, but the damped method is slightly lower at 6.60 so this is the model to choose based off this, further it seems more visually intuitive that the trend won't continue to increase forever at the exact same rate.
+
+```{r}
+myseries_models %>% 
+    accuracy() %>% 
+    select(.model, RMSE)
+```
+
+
+
 
 #### (d) Check that the residuals from the best method look like white noise.
 
+The histogram looks fairly normal, but on the ACF plot I do see some residuals out of the normal range with some regularity. There may be some lag that isn't captured in our model but I don't believe it's too severe.
+
+```{r}
+myseries_models %>%
+  select(mult_holtwinter_damp_0.85) %>%
+  gg_tsresiduals()
+```
+
+
 
 #### (e) Now find the test set RMSE, while training the model to the end of 2010. Can you beat the seasonal naïve approach from Exercise 7 in Section 5.11?
+
+Below I split the data, pull in my previous seasonal naive model and forecast and plot. We can see that the forecast misses the increase we see in that actual test data.
+
+```{r}
+# create training set
+myseries_train <- myseries %>%
+  filter(year(Month) < 2011)
+
+# model from past homework
+fit_snaive <- myseries_train %>%
+          model(SNAIVE(Turnover))
+
+fc <- fit_snaive %>%
+  forecast(new_data = anti_join(myseries, myseries_train))
+
+fc %>% autoplot(myseries)
+```
+
+When we look at the RMSE is is a high 77.35 compared to the 6.60 achieved by my mult_holtwinter_damp_0.85 model. So in this case our more complex multiplicative Holt-Winter Damped method is worth that complexity as it outperforms the simple seasonal naive model.
+
+
+```{r}
+fc %>%
+  accuracy(myseries)
+```
+
 
 
 # Exercise 8.9
 
 #### For the same retail data, try an STL decomposition applied to the Box-Cox transformed series, followed by ETS on the seasonally adjusted data. How does that compare with your best previous forecasts on the test set?
 
+First the STL decomposition after a Box-Cox transformation with lambda = 0.24. 
+
+```{r}
+lambda <- myseries_train %>%
+  features(Turnover, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+#apply transformation
+myseries_train_boxcox <-
+    myseries_train %>% 
+    mutate(turnover_boxcox = box_cox(Turnover, lambda))
+
+#STL decomposition
+myseries_train_boxcox %>%
+  model(
+    STL(turnover_boxcox ~ trend(window = 7) +
+                   season(window = "periodic"),
+    robust = TRUE)) %>%
+  components() %>%
+  autoplot()
 
 
+```
+
+Below is the ETS forecast compared to test data after applying the Box-Cox transformation on training data. It appears this model was a bit low in predictions around the middle of the forecast timespan.
+
+```{r}
+#try ETS on seasonally adjusted data
+myseries_train_boxcox_ets_fit <- myseries_train %>%
+  model(ETS(box_cox(Turnover, lambda)))
+
+myseries_train_boxcox_ets_fc <- myseries_train_boxcox_ets_fit %>%
+  forecast(new_data = anti_join(myseries, myseries_train))
+
+myseries_train_boxcox_ets_fc %>% autoplot(myseries)
+
+```
+
+We see an RMSE of 32.93 on this. It's better than the seasonal naive but not as good as the multiplicative seasonality, damping or not, in exercise 8.7 (though that was trained on the full dataset, not just a training subset).
+
+```{r}
+myseries_train_boxcox_ets_fc %>%
+  accuracy(myseries)
+```
 
 
 

@@ -3,11 +3,13 @@ title: "HW5 - Exponential Smoothing"
 author: "Rachel Greenlee"
 date: "3/4/2022"
 output:
+  
   html_document:
     toc: yes
     toc_depth: 3
     toc_float: yes
     code_folding: hide
+    theme: cerulean
 ---
 
 ```{r setup, include=FALSE}

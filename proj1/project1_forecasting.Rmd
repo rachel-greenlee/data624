@@ -1,0 +1,425 @@
+---
+title: "Project 1 -Forecasting "
+author: "Rachel Greenlee"
+date: "3/18/2022"
+output:
+  
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE,
+                      out.width = "100%")
+
+library("dplyr")
+library("tsibble")
+library('tidyr')
+library('fable')
+library("lubridate")
+library("plotly")
+library("readr")
+library("skimr")
+library("stringr")
+library("forecast")
+library("imputeTS")
+library("flextable")
+library("rstatix")
+
+##making theme
+mpeach <- "#fbaa82"
+mteal <- "#73a2ac"
+mdarkteal <- "#0b5d69"
+mgray <- "#4c4c4c"
+
+# set plot theme for assignment
+my_plot_theme <- list(
+  theme_classic() +
+  theme(plot.background = element_rect(fill = "#F3F2E8"),
+        panel.background = element_rect(fill = "#F3F2E8"),
+        panel.grid.major.x = element_line(color = "white"),
+        axis.title.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        text = element_text(size = 12)))
+```
+
+
+
+**Midterm project for DATA624 course in CUNY's MSDS program**
+
+
+# Part A - ATM Forecast
+
+#### In part A, I want you to forecast how much cash is taken out of 4 different ATM machines for May 2010.  The data is given in a single file.  The variable ‘Cash’ is provided in hundreds of dollars, other than that it is straight forward.   I am being somewhat ambiguous on purpose to make this have a little more business feeling.  Explain and demonstrate your process, techniques used and not used, and your actual forecast.  I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file  Also please submit the forecast which you will put in an Excel readable file.
+
+
+## #1 Data preparation  
+
+
+First I load in the provided data and take a look at the first few rows. I see that there is an unnecessary hour/minute/second componenet to our date, so I trim that off.
+
+```{r}
+atm_raw <- read_csv("atm_raw.csv")
+
+head(atm_raw)
+
+#start cleaned dataset
+atm <- atm_raw
+
+#shave off unecessary hour/minute/second of date variable
+atm$DATE <- str_sub(atm$DATE, end=-13)
+```
+
+A first glance at the data I see there is some work to do. First, I see 14 cases having no value for `ATM`, these can be removed as I see these are associated with May dates (which we'll be predicting later) and no `Cash` value is present. I also see that ATM1 and ATM2 have a couple missing values. ATM3 appears to have a strange distribution with nearly all the percintiles having a value of zero.
+
+```{r}
+atm %>%
+  group_by(ATM) %>%
+  skim()
+```
+
+
+I drop the cases where the `ATM` variable is NA, as these also had empty `Cash` values.
+```{r}
+#remove cases with ATM=NA
+atm <- atm %>%
+  drop_na(ATM)
+```
+
+
+Finally, I'll set each ATM to it's own tsibble.
+
+```{r}
+
+atm$DATE <- mdy(atm$DATE)
+atm$Cash <- as.numeric(atm$Cash)
+atm_ts <- as_tsibble(atm, key = ATM, index = DATE)
+
+
+atm1_ts <- atm_ts %>%
+  filter(ATM == "ATM1")
+
+atm2_ts <- atm_ts %>%
+  filter(ATM == "ATM2")
+
+atm4_ts <- atm_ts %>%
+  filter(ATM == "ATM4")
+
+```
+
+
+### Imputation {.tabset}
+
+Next I'll see how the `imputeTS` package would impute the handful of NA values using the linear (default) imputation method.
+
+#### ATM1
+
+The red values it's suggesting appear reasonable to my eye, and considering it's a very small proportion of the full dataset (0.8%) this is acceptable.  ###consider seasonally decomposed imputation?? na_seadec()
+
+```{r}
+#### THIS IS BREAKING SOMETHING AS A TSIBBLE
+#store imputation
+imputation <- na_interpolation(as.data.frame(atm1_ts$Cash))
+
+#plot imputation
+ggplot_na_imputations(as.data.frame(atm1_ts$Cash), imputation) +
+  my_plot_theme
+
+#incorporation imputation
+atm1_ts$Cash <- na_interpolation(as.data.frame(atm1_ts$Cash))
+
+```
+
+
+
+
+#### ATM2
+
+And again for ATM2 we see reasonable values for the default imputation method.
+
+```{r}
+#store imputation
+imputation <- na_interpolation(as.data.frame(atm2_ts$Cash))
+
+#plot imputation
+ggplot_na_imputations(as.data.frame(atm2_ts$Cash), imputation) +
+  my_plot_theme
+
+#incorporation imputation
+atm2_ts$Cash <- imputation
+```
+
+
+
+## #2 Visualize the data
+
+I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and ATM2 seem the most normally distributed, though there are quite a few outliers in ATM1. Further, ATM1 has a higher median value than ATM2. Finally, ATM4 has a very small range of values, however taking note of the scale this is an optics issue caused by that extreme outlier. We've stumbled on another data cleaning issue.
+
+```{r}
+atm1_box <- ggplot(atm1_ts, aes(x = Cash)) +
+                     boxplot()
+  
+  
+ggarrange(atm1_box, atm2_box, atm4_box,
+  labels = c("ATM1", "ATM2", "ATM4"),
+  ncol = 1)
+```
+
+
+
+
+
+### Check for outliers
+
+A nice function from the `statix` package allows it to see the number of cases that are outliers, and further how many at extreme outliers.
+
+ATM1 has 51 outliers, which is consistent with the boxplot view above. None are tagged as extreme outliers. The forecast package has a function `tsclean()` which will replace outliers. It does so by fitting a robust trend using loess (for non-seasonal series), or robust trend and seasonal components using STL (for seasonal series).
+
+
+```{r}
+atm <- data.frame(atm)
+atm %>%
+  identify_outliers(ATM1)
+
+
+```
+
+
+ATM2 has no outliers at all.
+
+```{r}
+atm %>%
+  identify_outliers(ATM2)
+```
+
+ATM3 has the three outliers that were easy to identify on the boxplot above. Essentially all values in the ATM3 time series are zero, except for these three values. We see the dates below that these are in the last three days of the time span, which suggests this is a newly installed ATM. These aren't actually outliers, but the start of the data for this particular ATM. Unfortunatley, with only 3 data points we won't be able to do any meaningful forecasting, so these ATM will be disregarded moving forward.
+
+```{r}
+atm %>%
+  identify_outliers(ATM3)
+
+#remove ATM3 from dataframe
+atm <- atm %>%
+  select(-ATM3)
+```
+
+ATM4 has 2 outliers, one of which is considered extreme. ###DEAL
+
+```{r}
+atm %>%
+  identify_outliers(ATM4)
+```
+
+
+```{r}
+#plot box-plots again
+atm %>%
+  subset(select = -DATE) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  geom_boxplot() +
+  facet_wrap(~ key, ncol = 1) +
+  labs(title = "Checking Distributions of Cash Withdrawn (hundred), by ATM") +
+  my_plot_theme
+```
+
+
+### Consider Transformations
+
+Now I can proceed looking for trend, seasonality, and/or the need for Box-Cox transformation on each of the ATMs' time series data.  
+
+ATM3 can be disregarded, as I'd recommend to my boss that this ATM is either broken or simply isn't being used. By the look of the three other plots I don't see any major changes in variance, that would greatly change the mean over time, so I conclude Box-Cox transformations are not necessary. There appears to be some seasonality on ATM1 and ATM2, possibly in ATM4 but it's a bit less apparent. I would imagine this by days of the week, but I'll need to check.
+
+```{r, fig.height=7}
+
+#return to long data format in order to facet-wrap plot
+atm %>%
+  gather("Date", "Cash", "ATM1", "ATM2", "ATM4") %>%
+  ggplot(aes(x = DATE, y = Cash, col = Date)) +
+  geom_line() +
+  facet_wrap(~Date, ncol = 1, scales = "free_y") +
+  my_plot_theme
+```
+
+
+
+
+```{r}
+
+atm_long <- atm %>%
+  gather("Date", "Cash", "ATM1", "ATM2", "ATM4")
+
+
+colnames(atm_long) <- c('Date', 'ATM', 'Cash')
+
+
+
+atm_ts <- as_tsibble(atm_long, key = ATM, index = Date)
+
+```
+
+```{r}
+locate.outliers(atm_ts$Cash)
+```
+
+
+
+## #3 Choose your model {.tabset}
+
+### ATM1
+
+
+### ATM2
+
+
+### ATM4
+
+
+
+
+## #4 Train the model  {.tabset}
+
+### ATM1
+
+
+### ATM2
+
+
+### ATM4
+
+
+
+
+
+## #5 Evaluate model performance  {.tabset}
+
+### ATM1
+
+
+### ATM2
+
+
+### ATM4
+
+
+## #6 Produce forecasts  {.tabset}
+
+### ATM1
+
+
+### ATM2
+
+
+### ATM4
+
+
+
+
+
+
+
+
+# Part B - Power Usage Forecast
+
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward.    Add this to your existing files above. 
+
+
+## #1 Data preparation
+
+Look at a summary of the data we see there are 3 variables, `CaseSequence` showing the order of the `YYYY-MMM` variable, and finally the `KWH` variable showing the power usage. `KWH` has one missing value we will want to impute before we proceed.
+
+```{r}
+power_raw <- read_csv("power_raw.csv")
+
+skim(power_raw)
+
+```
+
+### Imputation
+
+Below I use the `imputeTS` package to generate a value for the identified NA value, using the linear (default) method. The point seems reasonable and to take into account the seasonality we see in the data so I incorporate it.
+
+```{r}
+#store imputation
+imputation <- na_interpolation(power_raw$KWH)
+#plot imputation
+ggplot_na_imputations(power_raw$KWH, imputation) +
+  my_plot_theme
+
+#incorporate imputation
+power <- power_raw
+power$KWH <- imputation
+
+```
+
+
+
+
+## #2 Visualize the data
+
+I start by visualizing the data with a boxplot and see there is one low outlier we may want to check on.
+
+
+```{r}
+power %>%
+  subset(select = KWH) %>%
+  ggplot(aes(KWH)) +
+  geom_boxplot() +
+  labs(title = "Checking KWH Distribution") +
+  my_plot_theme
+```
+
+### Check for Outliers
+
+The outlier shown above on the box plot appears to be from July 2010 and is not marked as an extreme value. In a real-world setting I would be curious to know from coworkers if there was a large outage for part of this month that decreased consumption, or possible a measurement error.
+
+```{r}
+power <- data.frame(power)
+power %>%
+  identify_outliers(KWH)
+```
+
+
+
+```{r}
+
+
+
+```
+
+### Consider Transformations
+
+
+```{r}
+# power_ts %>%
+#   ggplot(aes(x = Month, y = KWH)) +
+#   geom_line() +
+#   my_plot_theme
+```
+
+
+
+## #3 Choose your model
+
+
+## #4 Train the model
+
+
+## #5 Evaluate model performance
+
+
+## #6 Produce forecasts
+
+
+
+
+
+
+
+
+
+

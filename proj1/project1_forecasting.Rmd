@@ -75,7 +75,7 @@ atm$DATE = as.Date(atm$DATE, format='%m/%d/%Y 12:00:00 AM', origin = '1990-01-01
 
 ```
 
-A first glance at the data I see there is some work to do. I see 14 cases having no value for `ATM`, these can be removed as I see these are associated with May dates (which we'll be predicting later) and no `Cash` value is present. I also see that ATM1 and ATM2 have a couple missing values. ATM3 appears to have a strange distribution with nearly all the percentiles having a value of zero.
+A first glance at the data I see there is some work to do. I see 14 cases having no value for `ATM`, these can be removed as I see these are associated with May dates (which we'll be predicting later) and no `Cash` value is present. I also see that ATM1 and atm4 have a couple missing values. ATM3 appears to have a strange distribution with nearly all the percentiles having a value of zero.
 
 ```{r}
 atm %>%
@@ -171,7 +171,7 @@ atm2$Cash <- imputation
 
 ## #2 Visualize the data
 
-I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and ATM2 seem the most normally distributed, though there are quite a few outliers on the low end in ATM1. Further, ATM1 has the highest median of the three ATMs which might suggest it's in a wealthier area. Finally, ATM4 has a very small range of values, however, taking note of the scale this is an optics issue caused by that extreme outlier well over $900,000. I've stumbled on another data cleaning issue.
+I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and atm2 seem the most normally distributed, though there are quite a few outliers on the low end in ATM1. Further, ATM1 has the highest median of the three ATMs which might suggest it's in a wealthier area. Finally, atm2 has a very small range of values, however, taking note of the scale this is an optics issue caused by that extreme outlier well over $900,000. I've stumbled on another data cleaning issue.
 
 ```{r}
 atm1_box <- ggplot(atm1, aes(x = Cash)) +
@@ -224,7 +224,7 @@ atm1_ts <- tsibble(
 
 #### ATM2
 
-ATM2 has far fewer outliers, only 5. These didn't show up on the boxplot above, but that is likely because the `tsoutliers()` function found outliers with regard to the seasonality and/or trend, whereas the box-plot is just looking at raw numbers and a raw distribution. While these values are certainly high, I don't belive they are in error so I won't remove/replace these either.
+ATM2 has far fewer outliers, only 5. These didn't show up on the boxplot above, but that is likely because the `tsoutliers()` function found outliers with regard to the seasonality and/or trend, whereas the box-plot is just looking at raw numbers and a raw distribution. While these values are certainly high, I don't believe they are in error so I won't remove/replace these either.
 
 ```{r}
 #make tsibble version that works with tsoutliers
@@ -264,20 +264,23 @@ atm4_ts <- atm4 %>%
 #check for outliers
 tsoutliers(atm4_ts$Cash)
 ```
-```{r}
-#make tsibble version that will work with autoplot later
-atm4_ts <- as.data.frame(atm4_ts)
 
-atm4_ts <- tsibble(
-  Date = as.Date("2009-05-01") + 0:364,
-  Cash = atm4$Cash)
-```
 
 
 
 I filter by values where Cash is greater than 10,000 and find this on the date 02-09-2010. A this value is so extreme, 27 times greater than the median, I'll replace it with the median. I'm assuming this must be in error, or maybe a day the ATM was robbed! If I were in a setting with coworkers I'd certainly ask my team if anyone knew what may have happened that day, I'd imagine a single ATM doesn't even contain that much cash at any given time - if I was in the industry I'd hopefully know this max amount. 
 
 ```{r}
+
+
+#make tsibble version that will work with autoplot later
+atm4_ts <- as.data.frame(atm4_ts)
+
+atm4_ts <- tsibble(
+  Date = as.Date("2009-05-01") + 0:364,
+  Cash = atm4$Cash)
+
+
 #finder outlier
 atm4_ts %>%
   filter(Cash > 10000)
@@ -292,10 +295,9 @@ atm4_median <- median(atm4_ts$Cash, na.rm = TRUE)
 atm4_ts$Cash[atm4_ts$Cash==NA]<-atm4_median
 
 
-# #convert to tsibble (again)
-# atm4_ts <- atm4_ts %>%
-#   select(DATE, Cash) %>%
-#   as_tsibble(key = c(Cash), index = DATE)
+
+
+
 
 ```
 
@@ -357,7 +359,7 @@ ggtsdisplay(atm1_tf$Cash, main="ATM1 Residuals after Box-Cox")
 
 #### ATM2
 
-A plot of the cleaned ATM2 data shows some changes in variance and certainly seasonality - similar to ATM
+A plot of the cleaned atm4 data shows some changes in variance and certainly seasonality - similar to ATM1.
 
 
 ```{r}
@@ -377,7 +379,7 @@ lambda2 <- atm2_ts %>%
 ggplotly(atm2_ts %>%
     autoplot(box_cox(Cash, lambda2)) +
      labs(y = "",
-       title = "Transformed ATM2 Cash with lambda = 0.68"))
+       title = "Transformed atm4 Cash with lambda = 0.68"))
 #apply transformation
 atm2_tf <-
     atm2_ts %>% 
@@ -390,7 +392,7 @@ Now I’ll check the residuals. Again I see lags at multiples of 7, but also mor
 
 ```{r}
 #check residuals
-ggtsdisplay(atm2_tf$Cash, main="ATM2 Residuals after Box-Cox")
+ggtsdisplay(atm2_tf$Cash, main="atm4 Residuals after Box-Cox")
 ```
 
 
@@ -426,7 +428,7 @@ atm4_tf <-
 
 ```
 
-Now I’ll check the residuals. I see primarily lags at multiples of 7, not at the other intervals seen in ATM2.
+Now I’ll check the residuals. I see primarily lags at multiples of 7, not at the other intervals seen in atm4.
 
 
 ```{r}
@@ -460,37 +462,166 @@ atm1_train <- atm1_ts %>%
 ```
 
 
+#### Seasonal Naive Model
+
+To start this Seasonal Naive Model (in blue) appears to not capture the range of April 2010, and further is sometimes high when the seasonality is low in the real data. This doesn't appear to be a great fit from just looking at the plot, but it isn't terrible.
+
 
 ```{r}
-atm1_train %>%
-  model(
-    `SNAIVE` = SNAIVE(Cash)) %>%
-  forecast(h = 30) %>%
-  autoplot(atm1_ts) +
+#save the model
+atm1_fit_snaive <- atm1_train %>%
+  model(SNAIVE(Cash))
+
+#create forecast
+atm1_forecast_snaive <- atm1_fit_snaive %>%
+  forecast(new_data = anti_join(atm1_ts, atm1_train))
+
+#plot forecast against real April data
+atm1_forecast_snaive %>% autoplot(atm1_ts) +
   labs(title = "ATM1 - Seasonal Naive Model",
        y = "USD in Hundreds")
 ```
 
+After saving the model fit and checking the residuals, I see the above model is not capturing the 7-day lag (days of the week).
+
+```{r}
+
+#check residuals
+atm1_fit_snaive %>% 
+  gg_tsresiduals()
+
+```
+
+Finally, in looking at the accuracy we see an RMSE of 16.08 and a MAE of 13.53. As our book authors recommend using RMSE and/or MAE to compare forecast methods. I'll compare future ATM1 scores to this base Seasonal Naive Model - and remember that the lower these values the better the fit.
+
+```{r}
+#calculate accuracy
+atm1_forecast_snaive %>% 
+  accuracy(atm1_ts)
+
+#store in df
+models_atm1 <- data.frame(model = "seasonal naive",
+                                RMSE = "16.03746",
+                                MAE = "13.53333")
+```
 
 
+
+#### ETS Model
+
+Next I check the Winter-Holt Seasonal Exponential Smoothing Model. I chose the multiplicative method for this model as the seasonal variations are changing proportional to the point in time for this time series, the seasonality isn't completely steady. As this data isn't show any major trends, I don't considered the damped method.  
+
+Visually, this appears to fit a lot better, particularly the pattern of when to go up or down, though the magnitude at times is a little off.
+
+```{r}
+#save the model
+atm1_fit_etsAAM <- atm1_train %>%
+  model(ETS(Cash ~ error("A") +
+                       trend("A") + season("M")))
+
+#create forecast
+atm1_forecast_etsAAM <- atm1_fit_etsAAM %>%
+  forecast(new_data = anti_join(atm1_ts, atm1_train))
+
+#plot forecast against real April data
+atm1_forecast_etsAAM %>% autoplot(atm1_ts) +
+  labs(title = "ATM1 - ETS AAM",
+       y = "USD in Hundreds")
+```
+The residual plots look much better than the Seasonal Naive Model, though we still have two value outside the ideal range on the ACF plot it isn't by too much.
+
+
+```{r}
+#check residuals
+atm1_fit_etsAAM %>% 
+  gg_tsresiduals()
+```
+I find the RMSE and MAE of this model and add it to me dataframe comparing all of the models I'm trying for ATM1.
+
+
+```{r}
+#calculate accuracy
+atm1_forecast_etsAAM %>% 
+  accuracy(atm1_ts)
+```
+
+
+
+```{r}
+#add to model list
+models_atm1[nrow(models_atm1) +1,] <- c("winter-holt seasonal, mult", "11.41895", "8.887111")
+```
+
+#### ARIMA Model
+
+Last I'll build an ARIMA Model. This model type requires the data be stationary. I look at the plotted data and do not see signs of non-stationarity, there isn't too much up and down of the seasonality across time.
 
 ```{r}
 atm1_train %>%
-  model(
-    `Winter-Holts` = ETS(Cash ~ error("A") +
-                       trend("A") + season("M"))) %>%
-  forecast(h = 30) %>%
-  autoplot(atm1_ts) +
-  labs(title = "ATM1 - Seasonal Naive Model",
+  autoplot()
+```
+Looking at the ACF plot I don't see the characteristic high R1 value associated with non-stationary data, only the significant lags every 7 days.
+
+```{r}
+#acf plot only
+atm1_train %>%
+  ACF(Cash) %>%
+  autoplot()
+
+```
+
+Further, the ndiffs() function suggests no difference for this time series. Since our p-value on the KPSS test is greater than 0.05, we conclude the series is stationary and ready for ARIMA modeling.
+
+```{r}
+ndiffs(atm1_train$Cash)
+
+unitroot_kpss(atm1_train$Cash)
+```
+
+Allowing the algorithm to select the best ARIMA model, it chooses a ARIMA(0,0,1)(0,1,2)[7]. While the AIC is displayed, we don't have these values for the other models so will need to find the RMSE and MAE.
+
+
+```{r}
+#use autoselect ARIMA model
+atm1_fit_ARIMA <- atm1_train %>%
+  model(ARIMA(Cash))
+
+report(atm1_fit_ARIMA)
+```
+
+Below I see the April 2010 forecast from the selected ARIMA model against the actual April 2010 data. This looks to be fit about as well as the ETS model, but it's hard to tell which is better by eye.
+
+```{r}
+#create forecast
+atm1_forecast_ARIMA <- atm1_fit_ARIMA %>%
+  forecast(new_data = anti_join(atm1_ts, atm1_train))
+
+#plot forecast against real April data
+atm1_forecast_ARIMA %>% autoplot(atm1_ts) +
+  labs(title = "ATM1 - ARIMA",
        y = "USD in Hundreds")
+```
+Checking the residuals plot it appears there is no pattern and it's simply white noise, which is good.
+
+```{r}
+atm1_fit_ARIMA %>%
+  gg_tsresiduals()
+```
+
+
+Finding the accuracy of the forecast, I see an RMSE of 12.38991 and a MAE of 9.706059.
+
+```{r}
+#calculate accuracy
+atm1_forecast_ARIMA %>% 
+  accuracy(atm1_ts)
 ```
 
 
 ```{r}
-
+#add to model list
+models_atm1[nrow(models_atm1) +1,] <- c("arima", "12.38991", "9.706059")
 ```
-
-
 
 
 ### ATM2
@@ -503,6 +634,177 @@ atm2_train <- atm2_ts %>%
 ```
 
 
+#### Seasonal Naive Model
+
+Again I'll start with a Seasonal Naive Model. This model visually appears to have predicted a few more oscilations than we see in the actual April 2010 data, so this again may not be the best fit.
+
+
+```{r}
+#save the model
+atm2_fit_snaive <- atm2_train %>%
+  model(SNAIVE(Cash))
+
+#create forecast
+atm2_forecast_snaive <- atm2_fit_snaive %>%
+  forecast(new_data = anti_join(atm2_ts, atm2_train))
+
+#plot forecast against real April data
+atm2_forecast_snaive %>% autoplot(atm2_ts) +
+  labs(title = "ATM2 - Seasonal Naive Model",
+       y = "USD in Hundreds")
+```
+The residuals show a huge lag at 7 on the ACF plot, a further indication we are missing that critical seasonality for atm4.
+
+```{r}
+#check residuals
+atm2_fit_snaive %>% 
+  gg_tsresiduals()
+```
+
+I'll calculate and store the accuracy of this model, but I find it likely the ETS and ARIMA will outperform it easily.
+
+```{r}
+#calculate accuracy
+atm2_forecast_snaive %>% 
+  accuracy(atm2_ts)
+
+#store in df
+models_atm2 <- data.frame(model = "seasonal naive",
+                                RMSE = "26.16231",
+                                MAE = "17.8")
+
+```
+
+
+#### ETS Model
+
+Next I'll try the Winter-Holt Seasonal Exponential Smoothing Model. I'll choose the additive method for ATM2 as the seasonal variations do not seem to change much dependent on the point in the time series. From looking at the plot, the pattern appears correct but it seems to be dipping a bit early each season than the actual April 2010 data. This might not be the best fit for atm4 either.
+
+```{r}
+#save the model
+atm2_fit_etsAAA <- atm2_train %>%
+  model(ETS(Cash ~ error("A") +
+                       trend("A") + season("A")))
+
+#create forecast
+atm2_forecast_etsAAA <- atm2_fit_etsAAA %>%
+  forecast(new_data = anti_join(atm2_ts, atm2_train))
+
+#plot forecast against real April data
+atm2_forecast_etsAAA %>% autoplot(atm2_ts) +
+  labs(title = "ATM2 - ETS AAA",
+       y = "USD in Hundreds")
+```
+
+This residual plot certainly looks better than the Seasonal Naive, but we still have lags at a few values a bit further out of the bounds than is ideal.
+
+```{r}
+#check residuals
+atm2_fit_etsAAA %>% 
+  gg_tsresiduals()
+```
+
+The RMSE and MAE values are lower than the Seasonal Naive, but I'm hopeful the ARIMA will do even better in this case.
+
+```{r}
+#calculate accuracy
+atm2_forecast_etsAAA %>% 
+  accuracy(atm2_ts)
+```
+
+
+
+```{r}
+#add to model list
+models_atm2[nrow(models_atm1) +1,] <- c("winter-holt seasonal, add", "20.62269", "15.24716")
+```
+
+
+
+#### ARIMA Model
+
+Last we'll try an ARIMA Model, but first we check if our data is stationary. It looks even more stationary than ATM1 did, and that one didn't require and differencing.
+
+```{r}
+atm2_train %>%
+  autoplot()
+```
+My eyes must be off, it appears 1 difference is appropriate.
+
+```{r}
+ndiffs(atm2_train$Cash)
+
+```
+
+I make a new tsibble of the training data and apply the differencing. I check to see if any furthering differencing is needed, and receive a 0.
+
+```{r}
+
+atm2_train_diff <- atm2_train %>%
+  mutate(Cash = difference(Cash))
+
+#check again
+ndiffs(atm2_train_diff$Cash)
+```
+
+And with a 0.1 value on the KPSS test the data is now considered stationary, as we accept the null hypothesis of this test. 
+
+
+```{r}
+unitroot_kpss(atm2_train_diff$Cash)
+```
+
+
+For the differenced AT<2 data it selects an ARIMA(3,0,0)(2,1,0)[7]. 
+
+```{r}
+#use autoselect ARIMA model
+atm2_fit_ARIMA <- atm2_train_diff %>%
+  model(ARIMA(Cash))
+
+report(atm2_fit_ARIMA)
+```
+A visual inspection of the forecast shows the predicted values going quite a bit lower than the rest of the series, not a very good fit.
+
+
+```{r}
+#create forecast
+atm2_forecast_ARIMA <- atm2_fit_ARIMA %>%
+  forecast(h = 30)
+
+#plot forecast against real April data
+atm2_forecast_ARIMA %>% autoplot(atm2_ts) +
+  labs(title = "ATM2 - ARIMA",
+       y = "USD in Hundreds")
+```
+
+
+Our residuals plot shows 6 values out of the ideal bounds on the ACF, showing the residuals are more than white noise.
+
+
+```{r}
+atm2_fit_ARIMA %>%
+  gg_tsresiduals()
+```
+
+
+
+
+Again, we'll need to find compatible measures of fit to the Seasonal Naive & ETS Models, so I calculate them and store below.
+
+```{r}
+#calculate accuracy
+atm2_forecast_ARIMA %>% 
+  accuracy(atm2_ts)
+```
+```{r}
+#add to model list
+models_atm2[nrow(models_atm2) +1,] <- c("arima", "77.43501", "63.42228")
+```
+
+
+
+
 
 ### ATM4
 
@@ -510,8 +812,143 @@ atm2_train <- atm2_ts %>%
 #shave off April 2010 to make our training dataset
 atm4_train <- atm4_ts %>%
   filter(Date < as.Date('2010-04-01'))
+
+
 ```
 
+
+#### Seasonal Naive Model
+
+I'll start with a simple Seasonal Naive Model. Visually, these predictions look decent, but about 2/3 the way into April it's quite a bit high compared to the actual data for the month.
+
+```{r}
+#save the model
+atm4_fit_snaive <- atm4_train %>%
+  model(SNAIVE(Cash))
+
+#create forecast
+atm4_forecast_snaive <- atm4_fit_snaive %>%
+  forecast(new_data = anti_join(atm4_ts, atm4_train))
+
+#plot forecast against real April data
+atm4_forecast_snaive %>% autoplot(atm4_ts) +
+  labs(title = "ATM4 - Seasonal Naive Model",
+       y = "USD in Hundreds")
+```
+
+The residuals once again show that missing lag on 7 days.
+
+```{r}
+#check residuals
+atm4_fit_snaive %>%
+  gg_tsresiduals()
+```
+I'll calculate and store the accuracy measures.
+
+```{r}
+#calculate accuracy
+atm4_forecast_snaive %>% 
+  accuracy(atm4_ts)
+```
+
+```{r}
+#store in df
+models_atm4 <- data.frame(model = "seasonal naive",
+                                RMSE = "301.022",
+                                MAE = "227.3667")
+```
+
+
+#### ETS Model
+
+Again I'll try an ETS Winter-Holt Seasonal method, with multiplicative method for the variation in the variation across the time series seen in the autoplot earlier in the Visualize the data section. Unfortunately, after 2 hours of troubleshooting I cannot determine why, regardless of how I reconfigure the tsibble, my ETS models only return null models. This happens when I specify the terms and when I don't. A fraction of the code I attempted below. Possibly this means the model isn't appropriate for this data, but I wasn't able to find confirmation of this in any resources online or in our textbook.
+
+```{r}
+# attempt 1 at tsibble
+atm4_train_ts <- as.data.frame(atm4_train)
+atm4_train_ts <- tsibble(
+  Date = as.Date("2009-05-01") + 0:334,
+  Cash = atm4_train_ts$Cash)
+
+#attempt 2 at tsibble
+atm4_train_df <- as.data.frame(atm4_train)
+
+atm4_train_ts_2 <- atm4_train_df %>%
+  select(-Date) %>%
+  mutate(Date = as.Date("2009-05-01") + 0:334) %>%
+  as_tsibble(index = Date, key = Cash)
+
+#save the model ##just a null models
+atm4_fit_etsAAM <- atm4_train_ts %>%
+  model(ETS(Cash))
+
+#error can't find variable
+# atm4_fit_etsAAM <- atm4_train_ts_2 %>%
+#   model(ETS(Cash))
+
+
+
+```
+
+
+
+#### ARIMA Model
+
+We see a plot and next check for differencing.
+
+```{r}
+atm4_train %>%
+  autoplot()
+```
+No differencing is needed.
+
+
+```{r}
+ndiffs(atm4_train$Cash)
+
+```
+
+
+An ARIMA(0,0,0)(2,0,0)[7] w/ mean is chosen by the auto-selector.
+
+```{r}
+#use autoselect ARIMA model
+atm4_fit_ARIMA <- atm4_train %>%
+  model(ARIMA(Cash))
+
+report(atm4_fit_ARIMA)
+```
+The forecast below looks like a poor fit, not capturing the seasonality.
+
+```{r}
+#create forecast
+atm4_forecast_ARIMA <- atm4_fit_ARIMA %>%
+  forecast(h = 30)
+
+#plot forecast against real April data
+atm4_forecast_ARIMA %>% autoplot(atm4_ts) +
+  labs(title = "ATM4 - ARIMA",
+       y = "USD in Hundreds")
+```
+The residual ACF plot is the best I've seen in this assignment so far, but our historgram has a bit of right-skew to the distribution.
+
+```{r}
+atm4_fit_ARIMA %>%
+  gg_tsresiduals()
+```
+
+```{r}
+#calculate accuracy
+atm4_forecast_ARIMA %>% 
+  accuracy(atm4_ts)
+```
+
+
+
+```{r}
+#add to model list
+models_atm4[nrow(models_atm4) +1,] <- c("arima", "273.5695", "234.8024")
+```
 
 
 
@@ -519,29 +956,144 @@ atm4_train <- atm4_ts %>%
 
 ### ATM1
 
+I can reference the dataframe I made storing the RMSE and MAE for each model I tried above. It appears the ETS model, a Winter-Holt Seasonal model of the multiplicative type, has both the lowest RMSE and MAE. I will proceed to forecast using this model.
+
+```{r}
+models_atm1
+```
+
+
 
 ### ATM2
 
+Looking at the stored RMSE and MAE accuracy measures for the three models, it appear that again the Winter-Holt Seasonal model, an Exponential Smoothing model with the additive method, performs best. In this case the ARIMA performs so poorly I am curious if I've done something wrong in the model-building, but I can't seem to figure out where that happened. I'll have to move forward again with the ETS model being best for ATM2, as it was for ATM1.
+
+```{r}
+models_atm2
+```
+
+
 
 ### ATM4
+
+For the two models I was able to get functioning, we see the RMSE is better on the ARIMA and the MAE is better on the Seasonal Naive. Looking at the forecast plots for each above, and remembering that when all things are nearly equal, simple is always better, I'll choose the Seasonal Naive to forecast for ATM4.
+
+
+```{r}
+models_atm4
+```
+
+
 
 
 ## #6 Produce forecasts  {.tabset}
 
 ### ATM1
 
+Using the entire dataset, I refit the model and forecast values for May 2010. I see in the plot below the forecast, with the confidence intervals getting wider/less sure later in May.
+
+```{r}
+#save the model
+atm1_fit_etsAAM_final <- atm1_ts %>%
+  model(ETS(Cash ~ error("A") +
+                       trend("A") + season("M")))
+
+#create forecast
+atm1_forecast_etsAAM_final <- atm1_fit_etsAAM_final %>%
+  forecast(h = 30)
+
+#plot forecast against real April data
+atm1_forecast_etsAAM_final %>% autoplot(atm1_ts) +
+  labs(title = "ATM1 - ETS AAM May 2010 Predictions",
+       y = "USD in Hundreds")
+```
+
+Last, I take the forecasted values and save to an Excel CSV file.
+
+```{r}
+#take date & forecast values
+forecast_ATM1 <- as.data.frame(atm1_forecast_etsAAM_final) %>%
+  select(c(Date, `.mean`))
+
+#rename columns for clarity
+colnames(forecast_ATM1) <- c('Date', 'Predicted Cash')
+
+#save to excel csv format
+write_excel_csv(forecast_ATM1, "forecast_ATM1.csv")
+
+```
+
+
+
 
 ### ATM2
+
+Using the entire dataset, I refit the model and forecast values for May 2010. I see in the plot below the forecast, with the confidence intervals getting wider/less sure later in May.
+
+```{r}
+#save the model
+atm2_fit_etsAAA_final <- atm2_ts %>%
+  model(ETS(Cash ~ error("A") +
+                       trend("A") + season("A")))
+
+#create forecast
+atm2_forecast_etsAAA_final <- atm2_fit_etsAAA_final %>%
+  forecast(h=30)
+
+#plot forecast against real April data
+atm2_forecast_etsAAA_final %>% autoplot(atm2_ts) +
+  labs(title = "ATM2 - ETS AAA",
+       y = "USD in Hundreds")
+```
+
+Last, I take the forecasted values and save to an Excel CSV file.
+
+```{r}
+#take date & forecast values
+forecast_atm2 <- as.data.frame(atm2_forecast_etsAAA_final) %>%
+  select(c(Date, `.mean`))
+
+#rename columns for clarity
+colnames(forecast_atm2) <- c('Date', 'Predicted Cash')
+
+#save to excel csv format
+write_excel_csv(forecast_atm2, "forecast_atm2.csv")
+
+```
 
 
 ### ATM4
 
+I refit the model using the full dataset and produce the May 2010 forecasts.
 
+```{r}
+#save the model
+atm4_fit_snaive_final <- atm4_ts %>%
+  model(SNAIVE(Cash))
 
+#create forecast
+atm4_forecast_snaive_final <- atm4_fit_snaive_final %>%
+  forecast(h = 30)
 
+#plot forecast against real April data
+atm4_forecast_snaive_final %>% autoplot(atm4_ts) +
+  labs(title = "ATM4 - Seasonal Naive Model",
+       y = "USD in Hundreds")
+```
+Last, I save the forecasted values to an Excel CSV file.
 
+```{r}
+#take date & forecast values
+forecast_atm4 <- as.data.frame(atm4_forecast_snaive_final) %>%
+  select(c(Date, `.mean`))
 
+#rename columns for clarity
+colnames(forecast_atm4) <- c('Date', 'Predicted Cash')
 
+#save to excel csv format
+write_excel_csv(forecast_atm4, "forecast_ATM4.csv")
+
+```
 
 # Part B - Power Usage Forecast
 

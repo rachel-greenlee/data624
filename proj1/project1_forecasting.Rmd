@@ -1155,6 +1155,7 @@ power %>%
 ```
 
 
+Since this outlier is only 12% of the median for this time series, I will impute it with the median as I presume this value must be in error - without being able to check with real-life coworkers.
 
 ```{r}
 #set outlier to NA for now
@@ -1225,7 +1226,7 @@ The residuals show some seasonality, possibly lower usage in month 4 (April) and
 
 ```{r}
 #check residuals
-ggtsdisplay(power_ts$KWH, main="KWH Residuals after Box-Cox")
+ggtsdisplay(power_tf$KWH, main="KWH Residuals after Box-Cox")
 ```
 
 
@@ -1233,19 +1234,183 @@ ggtsdisplay(power_ts$KWH, main="KWH Residuals after Box-Cox")
 
 ## #3 Choose your model
 
+This data appears similar to most of the ATM data I worked with, except it has a bit more trend, going up near the end fo the time serires data. I'll try some of the same models again.
+
+
 
 ## #4 Train the model
 
 
+```{r}
+
+#shave off2013 to make training
+power_train <-  head(power_tf, -12)
+```
+
+
+#### Seasonal Naive Model
+
+The Seasonal Naive Model looks pretty good, though it seems to have a bit more range in the seasonality than the actual data for 2013.
+
+```{r}
+#save the model
+power_fit_snaive <- power_train %>%
+  model(SNAIVE(KWH))
+
+#create forecast
+power_forecast_snaive <- power_fit_snaive %>%
+  forecast(new_data = anti_join(power_tf, power_train))
+
+#plot forecast against real April data
+power_forecast_snaive %>% autoplot(power_tf) +
+  labs(title = "KWH Predictions - Seasonal Naive Model",
+       y = "KWH")
+```
+However I see the 12 lag is quite significant.
+
+```{r}
+#check residuals
+power_fit_snaive %>% 
+  gg_tsresiduals()
+```
+
+
+```{r}
+#calculate accuracy
+power_forecast_snaive %>% 
+  accuracy(power_tf)
+
+#store in df
+models_power <- data.frame(model = "seasonal naive",
+                                RMSE = "0.003209111",
+                                MAE = "0.001980767")
+```
+
+
+
+#### ARIMA
+
+Looking at the training data I suspect we might need differencing.
+
+```{r}
+power_train %>%
+  autoplot()
+```
+
+One differencing is needed and done.
+```{r}
+ndiffs(power_train$KWH)
+```
+
+No more differencing is needed.
+
+```{r}
+power_train_diff <- power_train %>%
+  mutate(KWH = difference(KWH))
+
+#check again
+ndiffs(power_train_diff$KWH)
+
+unitroot_kpss(power_train_diff$KWH)
+```
+
+
+The automic model selection from the ARIMA() function returns a ARIMA(4,0,0)(2,1,0)[12].
+
+```{r}
+
+
+#use autoselect ARIMA model
+power_fit_ARIMA <- power_train_diff %>%
+  model(ARIMA(KWH))
+
+report(power_fit_ARIMA)
+```
+Our forecast of 2014 looks pretty dang good compared to all the other models in this project.
+
+```{r}
+
+#create forecast
+power_forecast_ARIMA <- power_fit_ARIMA %>%
+  forecast(h = 12)
+
+
+#plot forecast against real April data
+power_forecast_ARIMA %>% autoplot(power_train_diff) +
+  labs(title = "Power KWH Predictions - ARIMA",
+       y = "KWH")
+```
+The residuals look quite good other than one out of bounds at 5 on the ACF plot. Histogram of residuals looks mostly normally distributed. 
+
+```{r}
+power_fit_ARIMA %>%
+  gg_tsresiduals()
+```
+
+I get extremely low RMSE and MAE values, this is another very well fitting model, though I should be wary of any potential overfitting.
+
+```{r}
+#calculate accuracy
+power_forecast_ARIMA %>% 
+  accuracy(power_tf)
+```
+
+```{r}
+#add to model list
+models_power[nrow(models_power) +1,] <- c("arima", "4.222868", "4.222867")
+```
+
+
+
+
 ## #5 Evaluate model performance
+
+Both of these models performed extremely well. In this case the Seasonal Naive Model performed best, and has the bonus of being the most simple.
+
+
+```{r}
+models_power
+```
+
+
 
 
 ## #6 Produce forecasts
 
+Below I retrain the model on the full dataset, before predicted 12 months of data, all of 2014. In the plot I see both the seasonality and a bit of the trend maintained in the 1-year forecast.
+
+```{r}
+#save the model
+power_fit_snaive_final <- power_tf %>%
+  model(SNAIVE(KWH))
+
+#create forecast
+power_forecast_snaive_final <- power_fit_snaive_final %>%
+  forecast(h=12)
+
+#plot forecast against real April data
+power_forecast_snaive_final %>% autoplot(power_tf) +
+  labs(title = "KWH Predictions - Seasonal Naive Model",
+       y = "KWH")
+```
 
 
 
+Finally, these forecasted values are saved. NEEEEEED TO FIX DIFFERENCING BACK
 
+```{r}
+#take date & forecast values
+forecast_power <- as.data.frame(power_forecast_snaive_final) %>%
+  select(c(Month, `.mean`))
+
+#rename columns for clarity
+colnames(forecast_power) <- c('Month', 'Predicted KWH')
+
+#forecast_power$`Predicted KWH` <- diffinv(forecast_power$`Predicted KWH`)
+
+#save to excel csv format
+write_excel_csv(forecast_power, "forecast_power.csv")
+```
 
 
 

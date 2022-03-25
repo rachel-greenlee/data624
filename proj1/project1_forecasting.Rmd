@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE
                       out.width = "100%")
 
 library("dplyr")
+library("fpp3")
 library("tsibble")
 library('tidyr')
 library('fable')
@@ -29,7 +30,6 @@ library("forecast")
 library("imputeTS")
 library("flextable")
 library("ggpubr")
-library("fpp3")
 
 ##making theme
 mpeach <- "#fbaa82"
@@ -61,7 +61,7 @@ my_plot_theme <- list(
 ## #1 Data preparation  
 
 
-First I load in the provided data and take a look at the first few rows. I see that there is an unnecessary hour/minute/second component to our date, so I trim that off.
+First I load in the provided data and take a look at the first few rows. I see that we have a date column, which I recreate in a standardized format that will be recognized as a date by a tsibble later.
 
 ```{r}
 atm_raw <- read_csv("atm_raw.csv")
@@ -69,9 +69,6 @@ head(atm_raw)
 
 #start cleaned dataset
 atm <- atm_raw
-
-#shave off unecessary hour/minute/second of date variable
-#atm$DATE <- str_sub(atm$DATE, end=-13)
 
 #set to date
 atm$DATE = as.Date(atm$DATE, format='%m/%d/%Y 12:00:00 AM', origin = '1990-01-01')
@@ -87,7 +84,7 @@ atm %>%
 ```
 
 
-I drop the cases where the `ATM` variable is NA, as these also had empty `Cash` values.
+I drop the cases where the `ATM` variable is NA, as these also had empty `Cash` values. This will not result in an issue of continuity in our time series data, as these are the value at the end of the dates that will be predicted later.
 
 ```{r}
 #remove cases with ATM=NA
@@ -132,11 +129,11 @@ atm4 <- atm %>%
 
 ### Imputation {.tabset}
 
-Next I'll see how the `imputeTS` package would impute the handful of NA values using the linear (default) imputation method.
+Next I'll see how the `imputeTS` package would impute the handful of NA values using the interpolation method of imputation. This is a fairly basic method, but it essentially splits fills in the missing value halfway between the previous and next value in the time series. If I had more missing values, or missing values bunched together, I might consider more robust methods but this will suffice for this situation.
 
 #### ATM1
 
-The red values it's suggesting appear reasonable to my eye, and considering it's a very small proportion of the full dataset (0.8%) this is acceptable.  ###consider seasonally decomposed imputation?? na_seadec()
+The red values it's suggesting appear reasonable to my eye, and considering it's a very small proportion of the full dataset (0.8%) this is acceptable to use in order to achieve a complete time series dataset.
 
 ```{r}
 #store imputation
@@ -156,7 +153,7 @@ atm1$Cash <- na_interpolation(atm1$Cash)
 
 #### ATM2
 
-And again for ATM2 we see reasonable values for the default imputation method.
+And again for ATM2 we see reasonable values for the interpolation imputation method.
 
 ```{r}
 #store imputation
@@ -174,7 +171,7 @@ atm2$Cash <- imputation
 
 ## #2 Visualize the data
 
-I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and ATM2 seem the most normally distributed, though there are quite a few outliers on the low end in ATM1. Further, ATM1 has the highest median of the three ATMs. Finally, ATM4 has a very small range of values, however, taking note of the scale this is an optics issue caused by that extreme outlier well over $900,000. I've stumbled on another data cleaning issue.
+I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and ATM2 seem the most normally distributed, though there are quite a few outliers on the low end in ATM1. Further, ATM1 has the highest median of the three ATMs which might suggest it's in a wealthier area. Finally, ATM4 has a very small range of values, however, taking note of the scale this is an optics issue caused by that extreme outlier well over $900,000. I've stumbled on another data cleaning issue.
 
 ```{r}
 atm1_box <- ggplot(atm1, aes(x = Cash)) +
@@ -195,11 +192,14 @@ ggarrange(atm1_box, atm2_box, atm4_box,
 
 
 
-### Check for outliers
+### Check for outliers {.tabset}
 
-A nice function from the `forecast` package allows it to see the number of cases that are outliers. The function `tsoutliers()` has further documentation here, but essentially is better suited to detected outliers of a *time series* more than standard data as it decomposes the series and considers seasonality and trend before determining outliers. I'll now convert each ATM dataframe into a tsibble object so I can use the forecast package's functionality moving forward.
+A nice function from the `forecast` package allows it to see the number of cases that are outliers. The function `tsoutliers()` has thorough documentation, but essentially is better suited to detected outliers of a *time series* more than standard data as it decomposes the series and considers seasonality and trend before determining outliers. I'll now convert each ATM dataframe into a tsibble object so I can use the forecast package's functionality moving forward.
 
-ATM1 has over 30 outliers, which is consistent with the boxplot above. We also see the recommended replacement values. While this are statistically identified as outliers, there are so many it would be unwise to remove and/or replace these values. It's good to know these exist, but I won't fiddle with them.
+
+#### ATM1
+
+ATM1 has over 30 outliers, which is consistent with the boxplot above. We also see the recommended replacement values. While these are statistically identified as outliers, there are so many it would be unwise to remove and/or replace these values. It's good to know these exist, but I won't fiddle with them.
 
 ```{r}
 #make tsibble version that works with tsoutliers
@@ -211,19 +211,18 @@ atm1_ts <- atm1 %>%
 
 #check for outliers
 tsoutliers(atm1_ts$Cash)
-
-
+```
+```{r}
 #make tsibble version that will work with autoplot later
 atm1_ts <- as.data.frame(atm1_ts)
 
 atm1_ts <- tsibble(
   Date = as.Date("2009-05-01") + 0:364,
   Cash = atm1$Cash)
-
-
 ```
 
 
+#### ATM2
 
 ATM2 has far fewer outliers, only 5. These didn't show up on the boxplot above, but that is likely because the `tsoutliers()` function found outliers with regard to the seasonality and/or trend, whereas the box-plot is just looking at raw numbers and a raw distribution. While these values are certainly high, I don't belive they are in error so I won't remove/replace these either.
 
@@ -237,17 +236,20 @@ atm2_ts <- atm2 %>%
 
 #check for outliers
 tsoutliers(atm2_ts$Cash)
+```
 
-
+```{r}
 #make tsibble version that will work with autoplot later
 atm2_ts <- as.data.frame(atm2_ts)
 
 atm2_ts <- tsibble(
   Date = as.Date("2009-05-01") + 0:364,
   Cash = atm2$Cash)
-
 ```
 
+
+
+#### ATM4
 
 ATM4 has the highest number of outliers we've seen, and it's unclear from this readout which is the extreme value seen in the boxplot.
 
@@ -261,18 +263,19 @@ atm4_ts <- atm4 %>%
 
 #check for outliers
 tsoutliers(atm4_ts$Cash)
-
-
+```
+```{r}
 #make tsibble version that will work with autoplot later
 atm4_ts <- as.data.frame(atm4_ts)
 
 atm4_ts <- tsibble(
   Date = as.Date("2009-05-01") + 0:364,
   Cash = atm4$Cash)
-
 ```
 
-I filter by values where Cash is greater than 10,000 and find this on the date 02-09-2010. A this value is so extreme I'll replace it with the median.
+
+
+I filter by values where Cash is greater than 10,000 and find this on the date 02-09-2010. A this value is so extreme, 27 times greater than the median, I'll replace it with the median. I'm assuming this must be in error, or maybe a day the ATM was robbed! If I were in a setting with coworkers I'd certainly ask my team if anyone knew what may have happened that day, I'd imagine a single ATM doesn't even contain that much cash at any given time - if I was in the industry I'd hopefully know this max amount. 
 
 ```{r}
 #finder outlier
@@ -287,6 +290,12 @@ atm4_median <- median(atm4_ts$Cash, na.rm = TRUE)
 
 #put median in for outlier/NA value
 atm4_ts$Cash[atm4_ts$Cash==NA]<-atm4_median
+
+
+# #convert to tsibble (again)
+# atm4_ts <- atm4_ts %>%
+#   select(DATE, Cash) %>%
+#   as_tsibble(key = c(Cash), index = DATE)
 
 ```
 
@@ -310,12 +319,12 @@ Now I can proceed looking for trend, seasonality, and/or the need for Box-Cox tr
 
 A plot of the cleaned ATM1 data shows some changes in variance and certainly seasonality.
 
+
 ```{r}
 autoplot(atm1_ts, Cash)
+
 ```
-
-
-In order to better regulate the variation in the plot above, I'll perform a Box-Cox transformation. In this case lambda = 0.35. The plot still has plenty of seasonality, but the variance is more stable.
+In order to better regulate the variation in the plot above, I’ll perform a Box-Cox transformation. In this case lambda = 0.35. The plot still has plenty of seasonality, but the variance is more stable.
 
 ```{r}
 #calculate lambda
@@ -330,17 +339,14 @@ ggplotly(atm1_ts %>%
      labs(y = "",
        title = "Transformed ATM1 Cash with lambda = 0.35"))
 
-
 #apply transformation
 atm1_tf <-
     atm1_ts %>% 
     mutate(Cash = box_cox(Cash, lambda1))
-
-
-
 ```
 
-Now I'll check the residuals. I clearly see lags on day 7, 14, and 21  on the ACF plot, which makes sense as it's likely seasonal around the days of the week. I'll definitely need a model that incorporates this seasonality.
+
+Now I’ll check the residuals. I clearly see lags on day 7, 14, and 21 on the ACF plot, which makes sense as it’s likely seasonal around the days of the week. I’ll definitely need a model that incorporates this seasonality.
 
 
 ```{r}
@@ -353,12 +359,12 @@ ggtsdisplay(atm1_tf$Cash, main="ATM1 Residuals after Box-Cox")
 
 A plot of the cleaned ATM2 data shows some changes in variance and certainly seasonality - similar to ATM
 
+
 ```{r}
 autoplot(atm2_ts, Cash)
 ```
 
-
-In order to better regulate the variation in the plot above, I'll perform a Box-Cox transformation. In this case lambda = 0.68. The plot still has plenty of seasonality, but the variance is more stable.
+In order to better regulate the variation in the plot above, I’ll perform a Box-Cox transformation. In this case lambda = 0.68. The plot still has plenty of seasonality, but the variance is more stable.
 
 ```{r}
 #calculate lambda
@@ -372,38 +378,33 @@ ggplotly(atm2_ts %>%
     autoplot(box_cox(Cash, lambda2)) +
      labs(y = "",
        title = "Transformed ATM2 Cash with lambda = 0.68"))
-
-
 #apply transformation
 atm2_tf <-
     atm2_ts %>% 
     mutate(Cash = box_cox(Cash, lambda2))
 
-
-
 ```
 
-Now I'll check the residuals. Again I see lags at multiples of 7, but also more prominent ones at 2, 5, and 9 that will have to be checked on.
 
+Now I’ll check the residuals. Again I see lags at multiples of 7, but also more prominent ones at 2, 5, and 9 that will have to be checked on.
 
 ```{r}
 #check residuals
 ggtsdisplay(atm2_tf$Cash, main="ATM2 Residuals after Box-Cox")
-
 ```
 
 
 
 #### ATM4
 
-A plot of the cleaned ATM4 data shows seasonality with some of the most variance we've seen so far.
+A plot of the cleaned ATM4 data shows seasonality with some of the most variance we’ve seen so far.
 
 ```{r}
 autoplot(atm4_ts, Cash)
+
 ```
 
-
-In order to better regulate the variation in the plot above, I'll perform a Box-Cox transformation. In this case lambda = 0.40. The plot still has plenty of seasonality, but the variance is more stable.
+In order to better regulate the variation in the plot above, I’ll perform a Box-Cox transformation. In this case lambda = 0.40. The plot still has plenty of seasonality, but the variance is more stable.
 
 ```{r}
 #calculate lambda
@@ -418,63 +419,32 @@ ggplotly(atm4_ts %>%
      labs(y = "",
        title = "Transformed ATM4 Cash with lambda = 0.40"))
 
-
 #apply transformation
 atm4_tf <-
     atm4_ts %>% 
     mutate(Cash = box_cox(Cash, lambda4))
 
-
-
 ```
 
-Now I'll check the residuals. I see primarily lags at multiples of 7, not at the other intervals seen in ATM2.
+Now I’ll check the residuals. I see primarily lags at multiples of 7, not at the other intervals seen in ATM2.
 
 
 ```{r}
 #check residuals
 ggtsdisplay(atm4_tf$Cash, main="ATM4 Residuals after Box-Cox")
-
 ```
 
 
 
-## #3 Choose your model {.tabset}
-
-It's certainly all of our ATMs will need modeling that incorporated their seasonality around the weekdays. I'll try the simplest option, the `Seasonal Naive Method` first.
-
-### ATM1
 
 
 
-```{r}
-atm1_tf %>%
-  model(
-    `SNAIVE` = SNAIVE(Cash)) %>%
-  forecast(h = 15) %>%
-  autoplot(atm1_tf) +
-  labs(title = "ATM1 - Seasonal Naive Model",
-       y = "USD in Hundreds")
-```
+## #3 Choose your model
 
-```{r}
+It’s clear all of our ATMs will need modeling that incorporated their seasonality around the weekdays. I’ll try the simplest option, the Seasonal Naive Method first on each - this can also work as a baseline model to compare the others to. Next, I'll try an ETS model, as they can be used on non-stationary data and it operates based on weighted averages, favoring the more recent data points. Holt-Winter's Seasonal smoothing will be most appropriate as it considers both trend and seasonality. Finally, I'll see what the auto-selected ARIMA model can come up with.  
 
-atm1_tf %>%
-  model(
-    `Winter-Holts` = ETS(Cash ~ error("A") +
-                       trend("A") + season("M"))) %>%
-  forecast(h = 15) %>%
-  autoplot(atm1_tf) +
-  labs(title = "ATM1 - Seasonal Naive Model",
-       y = "USD in Hundreds")
-```
+After evaluating the performance of each of these, for each ATM, I'll choose my model before produce forecasts.
 
-
-
-### ATM2
-
-
-### ATM4
 
 
 
@@ -483,12 +453,64 @@ atm1_tf %>%
 
 ### ATM1
 
+```{r}
+#shave off April 2010 to make our training dataset
+atm1_train <- atm1_ts %>%
+  filter(Date < as.Date('2010-04-01'))
+```
+
+
+
+```{r}
+atm1_train %>%
+  model(
+    `SNAIVE` = SNAIVE(Cash)) %>%
+  forecast(h = 30) %>%
+  autoplot(atm1_ts) +
+  labs(title = "ATM1 - Seasonal Naive Model",
+       y = "USD in Hundreds")
+```
+
+
+
+
+```{r}
+atm1_train %>%
+  model(
+    `Winter-Holts` = ETS(Cash ~ error("A") +
+                       trend("A") + season("M"))) %>%
+  forecast(h = 30) %>%
+  autoplot(atm1_ts) +
+  labs(title = "ATM1 - Seasonal Naive Model",
+       y = "USD in Hundreds")
+```
+
+
+```{r}
+
+```
+
+
+
 
 ### ATM2
 
 
+```{r}
+#shave off April 2010 to make our training dataset
+atm2_train <- atm2_ts %>%
+  filter(Date < as.Date('2010-04-01'))
+```
+
+
+
 ### ATM4
 
+```{r}
+#shave off April 2010 to make our training dataset
+atm4_train <- atm4_ts %>%
+  filter(Date < as.Date('2010-04-01'))
+```
 
 
 
@@ -535,15 +557,6 @@ power_raw <- read_csv("power_raw.csv")
 
 skim(power_raw)
 
-#start cleaned dataset
-power <- power_raw
-
-#transform date
-power <- power %>%
-  mutate(Month = yearmonth(`YYYY-MMM`)) %>%
-  select(-`YYYY-MMM`)
-
-
 ```
 
 ### Imputation
@@ -552,12 +565,13 @@ Below I use the `imputeTS` package to generate a value for the identified NA val
 
 ```{r}
 #store imputation
-imputation <- na_interpolation(power$KWH)
+imputation <- na_interpolation(power_raw$KWH)
 #plot imputation
-ggplot_na_imputations(power$KWH, imputation) +
+ggplot_na_imputations(power_raw$KWH, imputation) +
   my_plot_theme
 
 #incorporate imputation
+power <- power_raw
 power$KWH <- imputation
 
 ```
@@ -579,20 +593,9 @@ power %>%
   my_plot_theme
 ```
 
-
-```{r}
-power %>%
-  subset(select = KWH) %>%
-  ggplot(aes(KWH)) +
-  geom_histogram() +
-  labs(title = "Checking KWH Distribution") +
-  my_plot_theme
-```
-
-
 ### Check for Outliers
 
-The outlier shown above on the box plot appears to be from July 2010. In a real-world setting I would be curious to know from coworkers if there was a large outage for part of this month that decreased consumption, or possible a measurement error. As I don't have the ability to do that, and it's the only significant outlier, I'm going to replace it with the median.
+The outlier shown above on the box plot appears to be from July 2010 and is not marked as an extreme value. In a real-world setting I would be curious to know from coworkers if there was a large outage for part of this month that decreased consumption, or possible a measurement error.
 
 ```{r}
 power %>%
@@ -602,7 +605,6 @@ power %>%
 
 
 ```{r}
-
 #set outlier to NA for now
 power$KWH[power$KWH=="770523"]<-NA
 
@@ -612,9 +614,13 @@ power_median <- median(power$KWH, na.rm = TRUE)
 #put median in for outlier/NA value
 power$KWH[power$KWH==NA]<-power_median
 
+
 ```
 
 Checking the boxplot again the distribution appears much more normal with still a fair amount of variation.
+
+
+
 ```{r}
 ggplot(power, aes(x = KWH)) +
   geom_boxplot() +
@@ -623,16 +629,16 @@ ggplot(power, aes(x = KWH)) +
 
 
 
+
 ### Consider Transformations
 
-After transforming out data to a tsibble, a quick check of the line graph shows we'll want to do a Box-Cox transformation to address the variance over time.
+After transforming out data to a tsibble, a quick check of the line graph shows we’ll want to do a Box-Cox transformation to address the variance over time.
 
 ```{r}
 #transfer to tsibble
 power_ts <- tsibble(
-  Month = yearmonth(power$Month),
-  KWH = power$KWH,
-)
+  Month = yearmonth(power$`YYYY-MMM`),
+  KWH = power$KWH)
 
 
 autoplot(power_ts)
@@ -640,6 +646,8 @@ autoplot(power_ts)
 ```
 
 The Box-Cox results in a lambda of -0.23 and we can see the transformation addresses the variance seen above.
+
+
 
 ```{r}
 #calculate lambda
@@ -660,12 +668,14 @@ power_tf <-
     mutate(KWH = box_cox(KWH, lambda))
 ```
 
-The residuals show some seasonality, possibly lower usage in month 4 (April) and high usage in in month 7 (July). This would make sense if it's data from a region in the USA.
+
+The residuals show some seasonality, possibly lower usage in month 4 (April) and high usage in in month 7 (July). This would make sense if it’s data from a region in the USA.
 
 ```{r}
 #check residuals
 ggtsdisplay(power_ts$KWH, main="KWH Residuals after Box-Cox")
 ```
+
 
 
 

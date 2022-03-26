@@ -1,7 +1,7 @@
 ---
 title: "Project 1 -Forecasting "
 author: "Rachel Greenlee"
-date: "3/18/2022"
+date: "3/26/2022"
 output:
   
   html_document:
@@ -75,7 +75,7 @@ atm$DATE = as.Date(atm$DATE, format='%m/%d/%Y 12:00:00 AM', origin = '1990-01-01
 
 ```
 
-A first glance at the data I see there is some work to do. I see 14 cases having no value for `ATM`, these can be removed as I see these are associated with May dates (which we'll be predicting later) and no `Cash` value is present. I also see that ATM1 and atm4 have a couple missing values. ATM3 appears to have a strange distribution with nearly all the percentiles having a value of zero.
+A first glance at the data I see there is some work to do. I see 14 cases having no value for `ATM`, these can be removed as I see these are associated with May dates (which we'll be predicting later) and no `Cash` value is present. I also see that ATM1 and ATM2 have a couple missing values. ATM3 appears to have a strange distribution with nearly all the percentiles having a value of zero.
 
 ```{r}
 atm %>%
@@ -171,7 +171,7 @@ atm2$Cash <- imputation
 
 ## #2 Visualize the data
 
-I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and atm2 seem the most normally distributed, though there are quite a few outliers on the low end in ATM1. Further, ATM1 has the highest median of the three ATMs which might suggest it's in a wealthier area. Finally, atm2 has a very small range of values, however, taking note of the scale this is an optics issue caused by that extreme outlier well over $900,000. I've stumbled on another data cleaning issue.
+I plot each ATM as a boxplot below to get a better look at the distributions. ATM1 and ATM2 seem the most normally distributed, though there are quite a few outliers on the low end in ATM1. Further, ATM1 has the highest median of the three ATMs which might suggest it's in a wealthier area. Finally, ATM4 has a very small range of values, however, taking note of the scale this is an optics issue caused by that extreme outlier well over $900,000. I've stumbled on another data cleaning issue.
 
 ```{r}
 atm1_box <- ggplot(atm1, aes(x = Cash)) +
@@ -359,7 +359,7 @@ ggtsdisplay(atm1_tf$Cash, main="ATM1 Residuals after Box-Cox")
 
 #### ATM2
 
-A plot of the cleaned atm4 data shows some changes in variance and certainly seasonality - similar to ATM1.
+A plot of the cleaned ATM2 data shows some changes in variance and certainly seasonality - similar to ATM1.
 
 
 ```{r}
@@ -445,7 +445,7 @@ ggtsdisplay(atm4_tf$Cash, main="ATM4 Residuals after Box-Cox")
 
 It’s clear all of our ATMs will need modeling that incorporated their seasonality around the weekdays. I’ll try the simplest option, the Seasonal Naive Method first on each - this can also work as a baseline model to compare the others to. Next, I'll try an ETS model, as they can be used on non-stationary data and it operates based on weighted averages, favoring the more recent data points. Holt-Winter's Seasonal smoothing will be most appropriate as it considers both trend and seasonality. Finally, I'll see what the auto-selected ARIMA model can come up with.  
 
-After evaluating the performance of each of these, for each ATM, I'll choose my model before produce forecasts.
+After evaluating the performance of each of these, for each ATM, I'll choose my model before producing forecasts.
 
 
 
@@ -470,7 +470,7 @@ To start this Seasonal Naive Model (in blue) appears to not capture the range of
 ```{r}
 #save the model
 atm1_fit_snaive <- atm1_train %>%
-  model(SNAIVE(Cash))
+  model(SNAIVE(Cash ~ lag(7)))
 
 #create forecast
 atm1_forecast_snaive <- atm1_fit_snaive %>%
@@ -549,7 +549,7 @@ atm1_forecast_etsAAM %>%
 
 ```{r}
 #add to model list
-models_atm1[nrow(models_atm1) +1,] <- c("winter-holt seasonal, mult", "11.41895", "8.887111")
+models_atm1[nrow(models_atm1) +1,] <- c("winter-holt seasonal, mult", "11.16975", "8.571197")
 ```
 
 #### ARIMA Model
@@ -642,7 +642,7 @@ Again I'll start with a Seasonal Naive Model. This model visually appears to hav
 ```{r}
 #save the model
 atm2_fit_snaive <- atm2_train %>%
-  model(SNAIVE(Cash))
+  model(SNAIVE(Cash ~ lag(7)))
 
 #create forecast
 atm2_forecast_snaive <- atm2_fit_snaive %>%
@@ -678,7 +678,7 @@ models_atm2 <- data.frame(model = "seasonal naive",
 
 #### ETS Model
 
-Next I'll try the Winter-Holt Seasonal Exponential Smoothing Model. I'll choose the additive method for ATM2 as the seasonal variations do not seem to change much dependent on the point in the time series. From looking at the plot, the pattern appears correct but it seems to be dipping a bit early each season than the actual April 2010 data. This might not be the best fit for atm4 either.
+Next I'll try the Winter-Holt Seasonal Exponential Smoothing Model. I'll choose the additive method for ATM2 as the seasonal variations do not seem to change much dependent on the point in the time series. From looking at the plot, the pattern appears correct but it seems to be dipping a bit early each season than the actual April 2010 data. This might not be the best fit for ATM2 either.
 
 ```{r}
 #save the model
@@ -755,16 +755,21 @@ unitroot_kpss(atm2_train_diff$Cash)
 ```
 
 
-For the differenced AT<2 data it selects an ARIMA(3,0,0)(2,1,0)[7]. 
+For the differenced ATM2 data it selects an ARIMA(3,0,0)(2,1,0)[7]. 
 
 ```{r}
 #use autoselect ARIMA model
-atm2_fit_ARIMA <- atm2_train_diff %>%
-  model(ARIMA(Cash))
+atm2_fit_ARIMA <- atm2_train %>%
+   model(ARIMA(Cash))
 
 report(atm2_fit_ARIMA)
 ```
-A visual inspection of the forecast shows the predicted values going quite a bit lower than the rest of the series, not a very good fit.
+
+
+
+
+
+A visual inspection of the forecast looks pretty good, though it seems not to have as severe of drops each week as the actual data.
 
 
 ```{r}
@@ -779,7 +784,7 @@ atm2_forecast_ARIMA %>% autoplot(atm2_ts) +
 ```
 
 
-Our residuals plot shows 6 values out of the ideal bounds on the ACF, showing the residuals are more than white noise.
+Our residuals plot shows no values/lags out of bounds on the ACF plot and a normally distributed histogram of residuals, suggesting the residuals variance is just white noise.
 
 
 ```{r}
@@ -797,9 +802,11 @@ Again, we'll need to find compatible measures of fit to the Seasonal Naive & ETS
 atm2_forecast_ARIMA %>% 
   accuracy(atm2_ts)
 ```
+
+
 ```{r}
 #add to model list
-models_atm2[nrow(models_atm2) +1,] <- c("arima", "77.43501", "63.42228")
+models_atm2[nrow(models_atm2) +1,] <- c("arima", "20.97845", "16.34507")
 ```
 
 
@@ -824,7 +831,7 @@ I'll start with a simple Seasonal Naive Model. Visually, these predictions look 
 ```{r}
 #save the model
 atm4_fit_snaive <- atm4_train %>%
-  model(SNAIVE(Cash))
+  model(SNAIVE(Cash ~ lag(7)))
 
 #create forecast
 atm4_forecast_snaive <- atm4_fit_snaive %>%
@@ -864,27 +871,27 @@ models_atm4 <- data.frame(model = "seasonal naive",
 Again I'll try an ETS Winter-Holt Seasonal method, with multiplicative method for the variation in the variation across the time series seen in the autoplot earlier in the Visualize the data section. Unfortunately, after 2 hours of troubleshooting I cannot determine why, regardless of how I reconfigure the tsibble, my ETS models only return null models. This happens when I specify the terms and when I don't. A fraction of the code I attempted below. Possibly this means the model isn't appropriate for this data, but I wasn't able to find confirmation of this in any resources online or in our textbook.
 
 ```{r}
-# attempt 1 at tsibble
-atm4_train_ts <- as.data.frame(atm4_train)
-atm4_train_ts <- tsibble(
-  Date = as.Date("2009-05-01") + 0:334,
-  Cash = atm4_train_ts$Cash)
-
-#attempt 2 at tsibble
-atm4_train_df <- as.data.frame(atm4_train)
-
-atm4_train_ts_2 <- atm4_train_df %>%
-  select(-Date) %>%
-  mutate(Date = as.Date("2009-05-01") + 0:334) %>%
-  as_tsibble(index = Date, key = Cash)
-
-#save the model ##just a null models
-atm4_fit_etsAAM <- atm4_train_ts %>%
-  model(ETS(Cash))
-
-#error can't find variable
-# atm4_fit_etsAAM <- atm4_train_ts_2 %>%
-#   model(ETS(Cash))
+# # attempt 1 at tsibble
+# atm4_train_ts <- as.data.frame(atm4_train)
+# atm4_train_ts <- tsibble(
+#   Date = as.Date("2009-05-01") + 0:334,
+#   Cash = atm4_train_ts$Cash)
+# 
+# #attempt 2 at tsibble
+# atm4_train_df <- as.data.frame(atm4_train)
+# 
+# atm4_train_ts_2 <- atm4_train_df %>%
+#   select(-Date) %>%
+#   mutate(Date = as.Date("2009-05-01") + 0:334) %>%
+#   as_tsibble(index = Date, key = Cash)
+# 
+# #save the model ##just a null models
+# atm4_fit_etsANA <- atm4_train %>%
+#   model(ETS(Cash ~ error('A') + trend('N') + season('A')))
+# 
+# #error can't find variable
+# # atm4_fit_etsAAM <- atm4_train_ts_2 %>%
+# #   model(ETS(Cash))
 
 
 
@@ -894,13 +901,13 @@ atm4_fit_etsAAM <- atm4_train_ts %>%
 
 #### ARIMA Model
 
-We see a plot and next check for differencing.
+Moving on to an ARIMA model, reploting the data there may be a need for differencing to make this data stationary.
 
 ```{r}
 atm4_train %>%
   autoplot()
 ```
-No differencing is needed.
+However, no differencing is needed.
 
 
 ```{r}
@@ -930,7 +937,7 @@ atm4_forecast_ARIMA %>% autoplot(atm4_ts) +
   labs(title = "ATM4 - ARIMA",
        y = "USD in Hundreds")
 ```
-The residual ACF plot is the best I've seen in this assignment so far, but our historgram has a bit of right-skew to the distribution.
+The residual ACF plot is one of the best I've seen in this assignment so far, but the histogram has a bit of right-skew to the distribution.
 
 ```{r}
 atm4_fit_ARIMA %>%
@@ -956,7 +963,7 @@ models_atm4[nrow(models_atm4) +1,] <- c("arima", "273.5695", "234.8024")
 
 ### ATM1
 
-I can reference the dataframe I made storing the RMSE and MAE for each model I tried above. It appears the ETS model, a Winter-Holt Seasonal model of the multiplicative type, has both the lowest RMSE and MAE. I will proceed to forecast using this model.
+I can reference the dataframe I made storing the RMSE and MAE for each model I tried above. It appears the ETS model, a Winter-Holt Seasonal model of the multiplicative type, has both the lowest RMSE and MAE. I will proceed to forecast using this model.The ARIMA model wasn't too far behind either.
 
 ```{r}
 models_atm1
@@ -966,7 +973,7 @@ models_atm1
 
 ### ATM2
 
-Looking at the stored RMSE and MAE accuracy measures for the three models, it appear that again the Winter-Holt Seasonal model, an Exponential Smoothing model with the additive method, performs best. In this case the ARIMA performs so poorly I am curious if I've done something wrong in the model-building, but I can't seem to figure out where that happened. I'll have to move forward again with the ETS model being best for ATM2, as it was for ATM1.
+Looking at the stored RMSE and MAE accuracy measures for the three models, it appear that again the Winter-Holt Seasonal model, an Exponential Smoothing model with the additive method, performs best. As was the case for ATM1, the ARIMA model isn't far behind. I'll move forward again with the ETS model being best for ATM2, as it was for ATM1.
 
 ```{r}
 models_atm2
@@ -1185,21 +1192,28 @@ ggplot(power, aes(x = KWH)) +
 
 ### Consider Transformations
 
-After transforming out data to a tsibble, a quick check of the line graph shows we’ll want to do a Box-Cox transformation to address the variance over time.
+After transforming out data to a tsibble and divided our KWH by thousands for easier chart reading, a quick check of the the histogram shows somewhat normally distributed data. In an effort to keep our predictions simple and easy to explain, I'm hopeful nontransformed data modeling will work okay,  but I'll check both.
 
 ```{r}
+#KWH in thousands
+power$KWH <- power$KWH / 1000
+
+
 #transfer to tsibble
 power_ts <- tsibble(
   Month = yearmonth(power$`YYYY-MMM`),
   KWH = power$KWH)
 
 
-autoplot(power_ts)
+ggplot(power_ts, aes(x = KWH)) +
+  geom_histogram(bins = 20)
 
 ```
 
-The Box-Cox results in a lambda of -0.23 and we can see the transformation addresses the variance seen above.
 
+
+
+The Box-Cox results in a lambda of -0.23, I'll store this version of the dataset to check against the non-transformed data later.
 
 
 ```{r}
@@ -1222,15 +1236,6 @@ power_tf <-
 ```
 
 
-The residuals show some seasonality, possibly lower usage in month 4 (April) and high usage in in month 7 (July). This would make sense if it’s data from a region in the USA.
-
-```{r}
-#check residuals
-ggtsdisplay(power_tf$KWH, main="KWH Residuals after Box-Cox")
-```
-
-
-
 
 ## #3 Choose your model
 
@@ -1244,7 +1249,9 @@ This data appears similar to most of the ATM data I worked with, except it has a
 ```{r}
 
 #shave off2013 to make training
-power_train <-  head(power_tf, -12)
+power_train <-  head(power_ts, -12)
+
+power_train_tf <-  head(power_tf, -12)
 ```
 
 
@@ -1255,14 +1262,14 @@ The Seasonal Naive Model looks pretty good, though it seems to have a bit more r
 ```{r}
 #save the model
 power_fit_snaive <- power_train %>%
-  model(SNAIVE(KWH))
+  model(SNAIVE(KWH ~ lag("year")))
 
 #create forecast
 power_forecast_snaive <- power_fit_snaive %>%
-  forecast(new_data = anti_join(power_tf, power_train))
+  forecast(new_data = anti_join(power_ts, power_train))
 
 #plot forecast against real April data
-power_forecast_snaive %>% autoplot(power_tf) +
+power_forecast_snaive %>% autoplot(power_ts) +
   labs(title = "KWH Predictions - Seasonal Naive Model",
        y = "KWH")
 ```
@@ -1274,16 +1281,46 @@ power_fit_snaive %>%
   gg_tsresiduals()
 ```
 
-
+As I mentioned earlier, I'll try running the model on the transformed data in case there are significant gains that make this more complex transformation worthwhile.
 ```{r}
+#save the model
+power_fit_snaive_tf <- power_train_tf %>%
+  model(SNAIVE(KWH ~ lag("year")))
+
+#create forecast
+power_forecast_snaive_tf <- power_fit_snaive_tf %>%
+  forecast(new_data = anti_join(power_tf, power_train_tf))
+
 #calculate accuracy
 power_forecast_snaive %>% 
   accuracy(power_tf)
 
 #store in df
-models_power <- data.frame(model = "seasonal naive",
-                                RMSE = "0.003209111",
-                                MAE = "0.001980767")
+models_power <- data.frame(model = "seasonal naive - boxcox",
+                                RMSE = "7344.53",
+                                MAE = "7209.359")
+
+
+```
+
+And the modeling on the original data values.
+```{r}
+#save the model
+power_fit_snaive <- power_train %>%
+  model(SNAIVE(KWH ~ lag("year")))
+
+#create forecast
+power_forecast_snaive <- power_fit_snaive %>%
+  forecast(new_data = anti_join(power_ts, power_train))
+
+#calculate accuracy
+power_forecast_snaive %>% 
+  accuracy(power_ts)
+
+#add to model list
+models_power[nrow(models_power) +1,] <- c("seasonal naive", "1035.538", "618.6056")
+
+
 ```
 
 
@@ -1315,13 +1352,13 @@ unitroot_kpss(power_train_diff$KWH)
 ```
 
 
-The automic model selection from the ARIMA() function returns a ARIMA(4,0,0)(2,1,0)[12].
+The automic model selection from the ARIMA() function returns a ARIMA(4,0,0)(2,1,0)[12] w/ drift.
 
 ```{r}
 
 
 #use autoselect ARIMA model
-power_fit_ARIMA <- power_train_diff %>%
+power_fit_ARIMA <- power_train %>%
   model(ARIMA(KWH))
 
 report(power_fit_ARIMA)
@@ -1336,7 +1373,7 @@ power_forecast_ARIMA <- power_fit_ARIMA %>%
 
 
 #plot forecast against real April data
-power_forecast_ARIMA %>% autoplot(power_train_diff) +
+power_forecast_ARIMA %>% autoplot(power_ts) +
   labs(title = "Power KWH Predictions - ARIMA",
        y = "KWH")
 ```
@@ -1352,12 +1389,12 @@ I get extremely low RMSE and MAE values, this is another very well fitting model
 ```{r}
 #calculate accuracy
 power_forecast_ARIMA %>% 
-  accuracy(power_tf)
+  accuracy(power_ts)
 ```
 
 ```{r}
 #add to model list
-models_power[nrow(models_power) +1,] <- c("arima", "4.222868", "4.222867")
+models_power[nrow(models_power) +1,] <- c("arima", "944.7432", "640.5602")
 ```
 
 
@@ -1365,7 +1402,9 @@ models_power[nrow(models_power) +1,] <- c("arima", "4.222868", "4.222867")
 
 ## #5 Evaluate model performance
 
-Both of these models performed extremely well. In this case the Seasonal Naive Model performed best, and has the bonus of being the most simple.
+Comparing first the Season Naive on the transformed data (boxcox) vs original scale and values, the BoxCox performed better on RMSE but worse on MAE, which is a reflection of the scaling and how the values are calculated. Generally, I don't believe you'd want to compare particularly the MAE on data of different scales. Despite the transformed data performing better, I'll stick with the Seasonal Naive Model for simplicity.  
+
+Comparing the Season Naive Model to the ARIMA, we see ARIMA had a better RMSE and Seasonal Naive had a better MAE. As I aim to choose the simpler method if not too much accuracy is lost, I'll move forward with the non-transformed Seasonal Naive Model.
 
 
 ```{r}
@@ -1381,22 +1420,22 @@ Below I retrain the model on the full dataset, before predicted 12 months of dat
 
 ```{r}
 #save the model
-power_fit_snaive_final <- power_tf %>%
-  model(SNAIVE(KWH))
+power_fit_snaive_final <- power_ts %>%
+  model(SNAIVE(KWH ~ lag("year")))
 
 #create forecast
 power_forecast_snaive_final <- power_fit_snaive_final %>%
   forecast(h=12)
 
 #plot forecast against real April data
-power_forecast_snaive_final %>% autoplot(power_tf) +
+power_forecast_snaive_final %>% autoplot(power_ts) +
   labs(title = "KWH Predictions - Seasonal Naive Model",
        y = "KWH")
 ```
 
 
 
-Finally, these forecasted values are saved. NEEEEEED TO FIX DIFFERENCING BACK
+Finally, these forecasted values are saved. 
 
 ```{r}
 #take date & forecast values
@@ -1406,7 +1445,6 @@ forecast_power <- as.data.frame(power_forecast_snaive_final) %>%
 #rename columns for clarity
 colnames(forecast_power) <- c('Month', 'Predicted KWH')
 
-#forecast_power$`Predicted KWH` <- diffinv(forecast_power$`Predicted KWH`)
 
 #save to excel csv format
 write_excel_csv(forecast_power, "forecast_power.csv")

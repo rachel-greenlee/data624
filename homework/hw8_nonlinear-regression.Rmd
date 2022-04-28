@@ -1,0 +1,355 @@
+---
+title: "HW8 - Non-Linear Regression"
+author: "Rachel Greenlee"
+date: "04/09/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE,
+                      out.width = "100%")
+
+library("mlbench") #for datasetes used below
+library("skimr") #for data exploration
+library("tidyverse")
+library("caret")
+library("elasticnet")
+library("RANN")
+library("AppliedPredictiveModeling")
+library("corrplot") #for correlation plot
+library("mlbench")
+library("kernlab")
+library("earth")
+
+```
+
+
+
+**Exercises from Chapter 7 of textbook Applied Predictive Modeling by Kuhn & Johnson**
+
+
+# Exercise 7.2
+
+#### Friedman (1991) introduced several benchmark data sets create by simulation. One of these simulations used the following nonlinear equation to create data:
+
+$y = 10 sin(\pi x_1x_2) + 20(x_3 − 0.5)^2 + 10x_4 + 5x_5 + N(0, \sigma^2)$
+
+where the x values are random variables uniformly distributed between [0, 1] (there are also 5 other non-informative variables also created in the simulation). The package mlbench contains a function called mlbench.friedman1 that simulates these data:
+
+```{r}
+#library(mlbench)
+set.seed(200)
+trainingData = mlbench.friedman1(200, sd = 1)
+## We convert the 'x' data from a matrix to a data frame
+## One reason is that this will give the columns names.
+trainingData$x = data.frame(trainingData$x)
+## Look at the data using
+featurePlot(trainingData$x, trainingData$y)
+## or other methods.
+```
+
+
+
+```{r}
+## This creates a list with a vector 'y' and a matrix
+## of predictors 'x'. Also simulate a large test set to
+## estimate the true error rate with good precision:
+testData = mlbench.friedman1(5000, sd = 1)
+testData$x = data.frame(testData$x)
+```
+
+
+#### (a) Tune several models on these data. {.tabset}
+
+##### KNN
+
+```{r}
+knnModel <- train(x = trainingData$x,
+y = trainingData$y,
+method = "knn",
+preProc = c("center", "scale"), 
+tuneLength = 10)
+
+knnModel$finalModel
+```
+
+###### Evaluate KNN
+
+```{r}
+pred_knn <- predict(knnModel$finalModel, newdata = testData$x)
+PR_knn <- postResample(pred = pred_knn, obs = testData$y)
+
+#store in df
+compare <- data.frame(model = "knn",
+                      rsquared = PR_knn[["Rsquared"]],
+           rmse = PR_knn[["RMSE"]])
+
+compare
+```
+
+
+##### SVM
+
+Next I'll try an SVM model.
+
+```{r}
+model_svm = train(x = trainingData$x, 
+                 y = trainingData$y,
+                 method = "svmRadial",
+                 preProc = c("center", "scale"),
+                 tuneLength = 14,
+                 trControl = trainControl(method = "cv"))
+
+model_svm$finalModel
+```
+###### Evaluate SVM
+
+```{r}
+pred_svm <- predict(model_svm$finalModel, newdata = testData$x)
+PR_svm <- postResample(pred = pred_svm, obs = testData$y)
+
+#store in df
+svm_row <- c("svm",  
+                PR_svm[["Rsquared"]],
+                PR_svm[["RMSE"]])
+compare <-rbind(compare, svm_row)
+
+
+compare
+```
+
+##### MARS
+
+Last I'll try a MARS model.
+
+```{r}
+marsGrid = expand.grid(.degree = 1:2, .nprune = 2:38) 
+model_mars = train(x = trainingData$x, 
+                  y = trainingData$y, 
+                  method = "earth", 
+                  tuneGrid = marsGrid, 
+                  trControl = trainControl(method = "cv", 
+                                           number = 10))
+
+model_mars$finalModel
+```
+
+
+###### Evaluate MARS
+
+```{r}
+pred_mars <- predict(model_mars$finalModel, newdata = testData$x)
+PR_mars <- postResample(pred = pred_mars, obs = testData$y)
+
+#store in df
+mars_row <- c("mars",  
+                PR_mars[["Rsquared"]],
+                PR_mars[["RMSE"]])
+compare <-rbind(compare, mars_row)
+
+compare
+```
+
+
+
+
+#### (b) Which models appear to give the best performance? Does MARS select the informative predictors (those named X1–X5)?
+
+In looking just at the r-squared and RMSE values I stored below, MARS appears to have the best performance, although an r-squared that high would be a bit alarming in read-world data. In the readout above I do see that MARS selected X1-X5 as it's top 5 predictors (in a different order than numeric). Effectively, it appears to have the best performance.
+
+```{r}
+compare
+```
+
+
+
+
+# Exercise 7.5
+
+#### Exercise 6.3 describes data for a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several nonlinear regression models.
+
+First I copy in the code from my previous work.
+
+```{r}
+data(ChemicalManufacturingProcess)
+chem <- as.data.frame(ChemicalManufacturingProcess)
+
+knn_imp <- preProcess(chem, "knnImpute")
+chem_imp <- predict(knn_imp, chem)
+
+#split train/test
+set.seed(3190)
+sample_set <- sample(nrow(chem_imp), round(nrow(chem_imp)*0.75), replace = FALSE)
+
+chem_train <-chem_imp[sample_set, ]
+chem_train_x <- chem_train[, -1]
+chem_train_y <- chem_train[, 1]
+
+
+chem_test <-chem_imp[-sample_set, ]
+chem_test_x <- chem_test[, -1]
+chem_test_y <- chem_test[, 1]
+
+
+```
+
+
+
+
+#### (a) Which nonlinear regression model gives the optimal resampling and test set performance? {.tabset}
+
+##### KNN
+
+
+```{r}
+knnModel <- train(x = chem_train_x,
+  y = chem_train_y,
+  method = "knn",
+  preProc = c("center", "scale"), 
+  tuneLength = 10)
+
+pred_knn <- predict(knnModel$finalModel, newdata = chem_test_x)
+PR_knn <- postResample(pred = pred_knn, obs = chem_test_y)
+
+#store in df
+compare <- data.frame(model = "knn",
+                      rsquared = PR_knn[["Rsquared"]],
+           rmse = PR_knn[["RMSE"]])
+
+compare
+```
+
+
+
+
+##### SVM
+
+```{r}
+svmModel <- train(x = chem_train_x,
+  y = chem_train_y,
+  method = "svmRadial",
+  preProc = c("center", "scale"), 
+  tuneLength = 14,
+   trControl = trainControl(method = "cv"))
+
+pred_svm <- predict(svmModel$finalModel, newdata = chem_test_x)
+PR_svm <- postResample(pred = pred_svm, obs = chem_test_y)
+
+#store in df
+svm_row <- c("svm",  
+                PR_svm[["Rsquared"]],
+                PR_svm[["RMSE"]])
+compare <-rbind(compare, svm_row)
+
+compare
+```
+
+
+
+
+##### MARS
+
+
+```{r}
+marsGrid = expand.grid(.degree = 1:2, .nprune = 2:38) 
+marsModel <- train(x = chem_train_x,
+                  y = chem_train_y,
+                  method = "earth", 
+                  tuneGrid = marsGrid, 
+                  trControl = trainControl(method = "cv", 
+                                           number = 10))
+
+pred_mars <- predict(marsModel$finalModel, newdata = chem_test_x)
+PR_mars <- postResample(pred = pred_mars, obs = chem_test_y)
+
+#store in df
+mars_row <- c("mars",  
+                PR_mars[["Rsquared"]],
+                PR_mars[["RMSE"]])
+compare <-rbind(compare, mars_row)
+
+compare
+```
+
+
+
+##### NNET
+
+```{r}
+nnetGrid = expand.grid(decay = c(0, 0.01, .1), 
+                       size = c(1,5,10), bag = FALSE) 
+
+nnetModel = train(x = chem_train_x,
+                  y = chem_train_y, 
+                  method = "avNNet",  
+                  tuneGrid = nnetGrid,  
+                  trControl = trainControl(method = "cv", 
+                                           number = 10),
+                  preProc = c("center", "scale"),  
+                  linout = TRUE,  trace = FALSE, 
+                  maxit = 10)
+
+pred_nnet <- predict(nnetModel$finalModel, newdata = chem_test_x)
+PR_nnet <- postResample(pred = pred_nnet, obs = chem_test_y)
+
+#store in df
+nnet_row <- c("nnet",  
+                PR_nnet[["Rsquared"]],
+                PR_nnet[["RMSE"]])
+compare <-rbind(compare, nnet_row)
+
+compare
+
+```
+
+##### Evaluating Performance
+
+With regard to the R-Squared value, the MARS model performs best, explaining 53.2% of the variance in the dataset. It also has the lowest RMSE - so it has the best performance in this case.
+
+```{r}
+compare
+```
+
+
+
+
+#### (b) Which predictors are most important in the optimal nonlinear regression model? Do either the biological or process variables dominate the list? How do the top ten important predictors compare to the top ten predictors from the optimal linear model?  
+
+For the MARS model it selected 6 process variables as the most important, followed by 2 biological and another 2 process - as seen below. This is very similar to what I saw in my linear model on the last assignment, 8 process variables and 2 biological variables, and the top two ``ManufacturingProcess32` and `ManufacturingProcess09` being the same.
+
+```{r}
+varImp(marsModel$finalModel)
+```
+
+
+
+
+#### (c) Explore the relationships between the top predictors and the response for the predictors that are unique to the optimal nonlinear regression model. Do these plots reveal intuition about the biological or process predictors and their relationship with yield?
+
+The only variables in the above top 10 MARS model that weren't in my PLS model top 10 previously are: `ManufacturingProcess01`, `ManufacturingProcess39`, `BiologicalMaterial03`, `BiologicalMaterial04`, and `ManufacturingProcess10`.
+
+I see that `BiologicalMaterial03` and ``BiologicalMaterial04` have a positive correlation with each other, and with the `Yield` target variable. The manufacturing process variable here seem to have only slight correlations with `Yield`, with most being negative. In looking back at my correlation plot from the last assignment, again see negative correlations for the biggest process variables these two modelsh ave in common. It appears that, roughly, the process variables are negatively correlated with `Yield` while the biologic variables are positively corelated with `Yield`.
+
+```{r}
+chem_top5 <- chem_imp %>%
+  select(c(`ManufacturingProcess01`, `ManufacturingProcess39`, `BiologicalMaterial03`, `BiologicalMaterial04`, `ManufacturingProcess10`,Yield))
+
+correlation <- cor(chem_top5)
+
+
+# plot correlations
+corrplot.mixed(correlation, tl.col = 'black', tl.pos = 'lt', 
+               number.cex= .9, tl.cex = .7)
+```
+
+
+
+
+
+

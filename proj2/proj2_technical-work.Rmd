@@ -1,0 +1,101 @@
+---
+title: "Project 2"
+author: "Douglas Barley, Rachel Greenlee, Sean Connin"
+date: "4/28/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE,
+                      out.width = "100%")
+options(kableExtra.auto_format = FALSE) #necessary for dlookr & skimr to play nice together
+library(tidyverse)
+library(skimr) #for summary
+library(dlookr) #for outlier check
+library(flextable)
+library(naniar) # for gg_miss_upset
+
+mpeach <- "#FBAA82"
+mteal <- "#73A2AC"
+mdarkteal <- "#OB5D69"
+mgray <- "#4C4C4C"
+
+# set plot theme for assignment
+my_plot_theme <- list(
+  theme_classic() +
+  theme(plot.background = element_rect(fill = "#F3F2E8"),
+        panel.background = element_rect(fill = "#F3F2E8"),
+        panel.grid.major.x = element_line(color = "white"),
+        axis.title.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+#needed below because had a real hard time with some charts in HTML
+#being large but having tiny tiny text
+        text = element_text(size = 20)))
+
+```
+
+# Data Prep
+
+
+## Import and Explore
+
+```{r}
+train <- read_csv("training_data.csv")
+test <- read_csv("testing_data.csv")
+```
+
+
+```{r}
+skim(train)
+```
+
+### Missing Data
+
+```{r}
+# plotting patterns in missingness, top 15 patterns
+train %>% 
+  plot_na_intersect(only_na = TRUE, typographic = FALSE, n_intersacts = 15)
+```
+
+
+```{r, fig.asp= 1.0, fig.width=4} 
+#above and using theme helped sizing on HTML
+
+# train %>% 
+#   gg_miss_upset(train, nsets = 10)
+```
+
+### Distribution
+
+```{r, fig.height=20}
+
+```
+
+
+
+### Outliers
+
+```{r}
+diagnose_outlier(train) %>%
+  arrange(desc(outliers_cnt)) %>% 
+  mutate_if(is.numeric, round , digits=3) %>% 
+  flextable() 
+```
+
+
+
+
+### Correlation with Target Variable PH
+
+```{r}
+
+```
+
+
+

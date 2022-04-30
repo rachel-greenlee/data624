@@ -1,5 +1,5 @@
 ---
-title: "Project 2"
+title: "Project 2 - Technical Report"
 author: "Douglas Barley, Rachel Greenlee, Sean Connin"
 date: "4/28/2022"
 output:
@@ -40,6 +40,11 @@ my_plot_theme <- list(
         text = element_text(size = 20)))
 
 ```
+
+
+# Project Premise
+
+This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH.  
 
 # Data Prep
 
@@ -235,7 +240,8 @@ data_juiced %>%
 
 #### sean & douglas, some functions you may want to use depending on model choice
 
-remove variable with near-zero variance -> https://recipes.tidymodels.org/reference/step_nzv.html
+remove variable with near-zero variance -> https://recipes.tidymodels.org/reference/step_nzv.html  
+
 create interaction variables -> https://recipes.tidymodels.org/reference/step_interact.html
 
 Full index Sean shared here -> https://recipes.tidymodels.org/reference/index.html

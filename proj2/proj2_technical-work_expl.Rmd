@@ -1,0 +1,101 @@
+---
+title: "Project 2 - Technical Report"
+author: "Douglas Barley, Rachel Greenlee, Sean Connin"
+date: "5/7/2022"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    code_folding: hide
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=FALSE,
+                      out.width = "100%")
+
+options(kableExtra.auto_format = FALSE) #necessary for dlookr & skimr to play nice together
+
+library(tidyverse)
+library(tidymodels)
+library(magrittr)
+library(flextable)
+library(skimr) #summary of dataframes
+library(dlookr) #missing graphic
+
+
+library(earth) # MARS
+library(finetune) # customize grid search for speed
+library(vip) #variable importance plots
+```
+
+
+# Project Premise
+
+_This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH._  
+
+# Data Exploration
+
+Our data has already been split into a training and testing dataset, so these are loaded in easily.
+
+
+```{r}
+# import train and test data
+train <- read_csv("training_data.csv")
+test <- read_csv("testing_data.csv")
+```
+
+
+Exploring the `train` dataset we see there are 2,571 cases and 33 variables - all of which are numeric except for one character variable. The character variable is `BrandCode` that appears to have 4 unique values.  
+
+With regards to missingness, no variable has an alarming amount of missing data - `MFR` has 212 values missing resulting in a complete case percentage of 91.8. We'll consider imputing missing values dependent on the type of models we choose to try later. We also obverse drastically different scales and ranges of values in the numeric variables, so scaling and centering will be considered dependent on the models selected later.
+
+```{r}
+skim(train)
+```
+
+To take a closer look at our missingness, we check for any frequent patterns of the missing data. For 100 cases only the `MFR` value is missing, and for 91 cases only the `BrandCode` is missing. These are the top two patterns of missingness, and we feel comfortable that these values are 'missing completely at random' and not a result of an underlying interaction or phenomena. 
+
+```{r}
+# plotting patterns in missingness, top 15 patterns
+train %>% 
+  plot_na_intersect(only_na = TRUE, typographic = FALSE, n_intersacts = 15)
+```
+
+For our numeric variables with missing values, we first check the shape of these variables to see if a mean or median imputation might suffice. From the histograms we see a lot of not-normally distributed variables and many with outliers. This rules out a mean imputation being useful, and while a mode could suffice we'll choose to use knn imputation when model-building as with this smaller dataset it won't be computationally challenging.
+
+```{r, fig.height=14}
+train %>%
+  #histograms only for numeric variables
+  subset(select = -`Brand Code`) %>%
+  #reshape
+  gather() %>% 
+  ggplot(aes(value)) +
+  geom_histogram() +
+  facet_wrap(~ key, scales = "free", ncol = 4) +
+  labs(title = "Checking Distribution of Numeric Predictor Variables")
+```
+
+
+To see if any of the numeric variables may be better served as factors, we look at the above histograms and the following output that shows the count of unique values for each variable.  We don't see any numeric variables that appear to be dichotomous or with only a few levels/values, so we will not switch any of the numeric variables to factors.
+
+```{r}
+var_unique <- lapply(train, unique)
+lengths(var_unique)
+```
+
+
+
+As it's hard to visualize all of these variables and their possible correlations, we numerically check for multicollinearity in the training data. We find many variables with greater than (+/-) 0.8. Knowing such, we'll employ the `step_corr` feature of model recipes to determine which features should be removed due to the colinearity. 
+
+```{r}
+train %>%
+    #filter_if(is.numeric)%>%
+    correlate() %>%
+    filter(coef_corr > .8 | coef_corr < -.8)%>% # set thresholds to limit output 
+    arrange(desc(abs(coef_corr))) %>%
+    flextable() %>%
+  set_caption('Table 1. Correlated Variables')
+
+```

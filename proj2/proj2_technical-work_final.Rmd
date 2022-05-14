@@ -30,7 +30,6 @@ library(finetune) # customize grid search for speed
 library(vip) #variable importance plots
 ```
 
-
 # Project Premise
 
 _This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH._  
@@ -39,17 +38,15 @@ _This is role playing.  I am your new boss.  I am in charge of production at ABC
 
 Our data has already been split into a training and testing dataset, so these are loaded in easily.
 
-
 ```{r}
 # import train and test data
 train <- read_csv("training_data.csv")
 test <- read_csv("testing_data.csv")
 ```
 
-
 Exploring the `train` dataset we see there are 2,571 cases and 33 variables - all of which are numeric except for one character variable. The character variable is `BrandCode` that appears to have 4 unique values.  
 
-With regards to missingness, no variable has an alarming amount of missing data - `MFR` has 212 values missing resulting in a complete case percentage of 91.8. We'll consider imputing missing values dependent on the type of models we choose to try later. We also obverse drastically different scales and ranges of values in the numeric variables, so scaling and centering will be considered dependent on the models selected later.
+With regard to missingness, no variable has an alarming amount of missing data - `MFR` has 212 values missing resulting in a complete case percentage of 91.8. We'll consider imputing missing values dependent on the type of models we choose to try later. We also obverse drastically different scales and ranges of values in the numeric variables, so scaling and centering will be considered dependent on the models selected later.
 
 ```{r}
 skim(train)
@@ -63,7 +60,7 @@ train %>%
   plot_na_intersect(only_na = TRUE, typographic = FALSE, n_intersacts = 15)
 ```
 
-For our numeric variables with missing values, we first check the shape of these variables to see if a mean or median imputation might suffice. From the histograms we see a lot of not-normally distributed variables and many with outliers. This rules out a mean imputation being useful, and while a mode could suffice we'll choose to use knn imputation when model-building as with this smaller dataset it won't be computationally challenging.
+For our numeric variables with missing values, we first check the shape of these variables to see if a mean or median imputation might suffice. From the histograms we see a lot of not-normally distributed variables and many with outliers. This rules out a mean imputation being useful, and while a mode could suffice we'll choose to use knn imputation when model-building since with this smaller dataset it won't be computationally challenging.
 
 ```{r, fig.height=14}
 train %>%
@@ -77,7 +74,6 @@ train %>%
   labs(title = "Checking Distribution of Numeric Predictor Variables")
 ```
 
-
 To see if any of the numeric variables may be better served as factors, we look at the above histograms and the following output that shows the count of unique values for each variable.  We don't see any numeric variables that appear to be dichotomous or with only a few levels/values, so we will not switch any of the numeric variables to factors.
 
 ```{r}
@@ -85,9 +81,7 @@ var_unique <- lapply(train, unique)
 lengths(var_unique)
 ```
 
-
-
-As it's hard to visualize all of these variables and their possible correlations, we numerically check for multicollinearity in the training data. We find many variables with greater than (+/-) 0.8. Knowing such, we'll employ the `step_corr` feature of model recipes to determine which features should be removed due to the colinearity. 
+As it's hard to visualize all of these variables and their possible correlations, we numerically check for multicollinearity in the training data. We find many variables with greater than (+/-) 0.8. Knowing such, we'll employ the `step_corr` feature of model recipes to determine which features should be removed due to the collinearity. 
 
 ```{r}
 train %>%
@@ -99,7 +93,6 @@ train %>%
   set_caption('Table 1. Correlated Variables')
 
 ```
-
 
 # Model Development
 
@@ -115,7 +108,7 @@ The following predictive models will be trained and evaluated here:
 
 *Model Characteristics*
 
-_Decision Tree_: can capture nonlinear relationships, little data preprocessing, doesnt require normalizing, easy to interpret, can get sense of feature importance, sensitive to collinearity as well as changes in data input, lower accuracy than other models.
+_Decision Tree_: can capture nonlinear relationships, little data preprocessing, doesn't require normalizing, easy to interpret, can get sense of feature importance, sensitive to collinearity as well as changes in data input, lower accuracy than other models.
 
 _Random Forest_: one of the most accurate decision models, Works well on large datasets, can be used to extract variable importance, does not require feature engineering (scaling and normalization), tends to overfit noisy data, hard to interpret, requires careful tuning. 
 
@@ -127,7 +120,7 @@ _MARS_: automatic feature selection, interpretability, little data preprocessing
 
 ## Train and Test Splits
 
-Our data has already been split into a training and testing dataset. To use these data in a Tidymodels modeling process, we will combine the two as and reverse engineer our split.
+Our data has already been split into a training and testing dataset. To use these data in a Tidymodels modeling process, we will combine the two and reverse engineer our split.
 
 ```{r}
 
@@ -144,7 +137,7 @@ data%<>%
   filter(!is.na(PH))%>%
   mutate_if(is.character, as.factor)
 
-# calcualte proportion of data from train
+# calculate proportion of data from train
 
 prop<-nrow(train)/(nrow(train)+nrow(test)) 
 
@@ -162,10 +155,9 @@ all_equal(train, train.split)
 
 ```
 
-
 ## Cross-Validation
 
-We start start model development by setting up our resampling scheme for parameter optimization and model selection. Here we will use 10-kfold Cross-validation and identify PH as our response variable. 
+We start model development by setting up our resampling scheme for parameter optimization and model selection. Here we will use 10-fold cross-validation and identify PH as our response variable. 
 
 ```{r}
 
@@ -186,7 +178,7 @@ Next, we conduct our data preprocessing steps on the training data using the Rec
 1. MARS: impute missing values, dummy code factor variables
 2. Others: impute missing values, normalize numeric data, dummy-code factor variables, remove multicollinear predictors
 
-We note that multicollinearity can impact tree-based models and that SVM requires normalizing (scaling and centering) prior to model training. We also impute missing values to enable parameter estimation via. grid-tuning. Our earlier tuning attempts failed due to missingness. 
+We note that multicollinearity can impact tree-based models and that SVM requires normalizing (scaling and centering) prior to model training. We also impute missing values to enable parameter estimation via grid-tuning. Our earlier tuning attempts failed due to missingness.
 
 ```{r}
 
@@ -211,7 +203,6 @@ mars.recipe<-
 ## Model Specification
 
 Our model specifications include selected tuning parameters specific to each model. These parameters will be optimized using grid_tune(). 
-
 
 ```{r}
 
@@ -258,7 +249,6 @@ nnet.param <-
    extract_parameter_set_dials() %>% 
    update(hidden_units = hidden_units(c(1, 27)))
 
-
 # Specify MARS
 
 mars.spec <-
@@ -267,15 +257,13 @@ mars.spec <-
        prod_degree = tune()) %>%
   set_mode("regression")%>%
   set_engine("earth")
-
 ```
 
 ## Model Workflows
 
-We now construct our initial model workflows and combine them using workflow_set() to streamline our training process. The workflows themselves, link each model's recipe and specification. 
+We now construct our initial model workflows and combine them using workflow_set() function to streamline our training process. The workflows themselves link each model's recipe and specification. 
 
 ```{r}
-
 #build workflow for recipe with normalization
 
 models.wf<-
@@ -295,16 +283,13 @@ mars.wf<-
 combined.wf<-
   bind_rows(models.wf, mars.wf)%>%
   mutate(wflow_id = gsub("(simple_)|(normalized_)", "", wflow_id))
-
 ```
 
 ## Model Parameter Tuning
 
-Next, we optimize our model's parameters via. a 20-point grid and fit our training data in one step. The fitting process is time intensive. As a result, we also save our results to an .RData file that can be reused at later dates. 
-
+Next, we optimize our model's parameters via a 20-point grid and fit our training data in one step. The fitting process is time intensive. As a result, we also save our results to an .RData file that can be reused at later dates. 
 
 ```{r}
-
 # speed grid estimation
 
 race.ctrl <-
@@ -312,7 +297,6 @@ race.ctrl <-
       save_pred = TRUE,
       save_workflow = TRUE
    )
-
 
 grid.results <-
    combined.wf %>%
@@ -329,18 +313,15 @@ grid.results <-
 
 save(grid.results, file='grid.results.Rdata')
 
-
 #load('grid.results.Rdata')
 
 ```
 
 ## Training Fit: Performance Metrics
 
-
 We use the RMSE (root mean squared error) metric to evaluate/compare our model's performance in fitting the training data. 
 
 From Table 2 and Figure 1, it is clear that the MARS model outperformed the other models - i.e., lowest rmse & smallest std_err. 
-
 
 ```{r}
 
@@ -386,6 +367,7 @@ collect_metrics(grid.results)%>%
   flextable()%>%
   set_caption('Table 3. Selected Models Based on Training Fit')
 ```
+
 # Model Evaluation
 
 Our final model evaluation process includes the following steps:
@@ -520,6 +502,7 @@ rbind(metrics1, metrics2, metrics3, metrics4, metrics5)%>%
    set_caption('Table 4. Comparison of Model Fit on Test Data')
 
 ```
+
 ## Model Interpretation
 
 One advantage of MARS models is their interpretability. Table 5 shows the variables selected for the final model along with their respective coefficients. 
@@ -537,11 +520,8 @@ Each plot also reveals the hinge that is characteristic of MARS such that:
 - Temperature = 0 above 68.2
 - BrandCode_C = 0 for all values other than 0.45
 
-
 ```{r}
-
 # Print model
-
 output<-extract_fit_engine(mars.test)%>%
   summary()
 
@@ -552,13 +532,12 @@ output[12]%>%
   flextable%>%
   set_caption('Table 5. Final MARS Model: Features & Coefficients')
 
-
 # plot partial dependence of features (from plotmo package in Earth -- plot regression surfaces)
-
 plotmo(output, pmethod='partdep', caption='Figure 2. Partial dependence plots for continuous predictors using MARS')
 
 ```
-To effective visualize the model results we can plot our observed PH values against the model PH predictions for both training and test sets. These results as shown in Figure 3 and Table 6. Our errors are lowest around ~ PH = 8.5. Our model tends to overpredict at lower values and overpredict at higher values for PH on the test data. 
+
+To effectively visualize the model results we can plot our observed PH values against the model PH predictions for both training and test sets. These results as shown in Figure 3 and Table 6. Our errors are lowest around ~ PH = 8.5. Our model tends to overpredict at lower values and overpredict at higher values for PH on the test data. 
 
 ```{r}
 
@@ -583,7 +562,7 @@ model.predictions %>%
   geom_point(aes(color=type, alpha=.95), show.legend = FALSE) +
   scale_color_manual(values = c("Training Data" = "#4DB6D0", "Test Data" = "#BECA55"))+
   labs(x='PH (Observed)', y= 'PH (Predicted)', title='Figure 3. Observed vs Predicted PH Values: MARS Model')+
-  theme(plot.title = element_text(vjust = 10))+ # this doesnt seem to be working
+  theme(plot.title = element_text(vjust = 10))+ # this doesn't seem to be working
   theme_minimal() +
   facet_wrap(~type)
 
@@ -603,6 +582,7 @@ model.predictions %>%
   
 
 ```
+
 Finally, we can rank the relative importance of each covariate in terms of their contribution as predictors of PH. From Table 7., we that 'MnF Flow' makes the greatest contribution to the model prediction. For this dataset, only four covariates were included in the final model. 
 
 ```{r}
@@ -622,5 +602,5 @@ mars.test%>%
   theme_light()
 
 ```
-We conclude that any investments to manipulate PH as part of the manufacturing process should focus on adjustments to these four covariates. And that a cost:benefit analysis be conducted before committing company resources for this purpose.  
 
+We conclude that any investments to manipulate PH as part of the manufacturing process should focus on adjustments to these four covariates. And that a cost:benefit analysis be conducted before committing company resources for this purpose.  
